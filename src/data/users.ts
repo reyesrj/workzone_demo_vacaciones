@@ -20,6 +20,7 @@ export interface User {
   department: string;
   approver?: string;
   schedule: string;
+  hireDate?: string;
   vacationBalance: number;
   vacationBalanceTruncas: number;    // año actual
   vacationBalancePendientes: number; // año anterior
@@ -38,6 +39,7 @@ export const USERS: User[] = [
     department: 'Tecnología',
     approver: 'María López',
     schedule: 'Lunes a Viernes 09:00 – 18:00',
+    hireDate: '2019-03-12',
     vacationBalance: 15,
     vacationBalanceTruncas: 8,
     vacationBalancePendientes: 5,
@@ -54,6 +56,7 @@ export const USERS: User[] = [
     department: 'Operaciones',
     approver: 'María López',
     schedule: 'Turnos rotativos (variable)',
+    hireDate: '2020-11-05',
     vacationBalance: 12,
     vacationBalanceTruncas: 7,
     vacationBalancePendientes: 3,
@@ -69,6 +72,7 @@ export const USERS: User[] = [
     role: 'jefe_aprobador',
     department: 'Tecnología',
     schedule: 'Lunes a Viernes 09:00 – 18:00',
+    hireDate: '2017-08-21',
     vacationBalance: 20,
     vacationBalanceTruncas: 12,
     vacationBalancePendientes: 5,
@@ -83,6 +87,7 @@ export const USERS: User[] = [
     role: 'administrador_gh',
     department: 'Recursos Humanos',
     schedule: 'Lunes a Viernes 09:00 – 18:00',
+    hireDate: '2014-05-09',
     vacationBalance: 18,
     vacationBalanceTruncas: 10,
     vacationBalancePendientes: 5,
@@ -98,6 +103,7 @@ export const USERS: User[] = [
     department: 'Tecnología',
     approver: 'María López',
     schedule: 'Lunes a Viernes 09:00 – 18:00',
+    hireDate: '2020-02-17',
     vacationBalance: 18,
     vacationBalanceTruncas: 11,
     vacationBalancePendientes: 5,
@@ -114,6 +120,7 @@ export const USERS: User[] = [
     department: 'Operaciones',
     approver: 'María López',
     schedule: 'Turnos rotativos (variable)',
+    hireDate: '2022-07-24',
     vacationBalance: 10,
     vacationBalanceTruncas: 6,
     vacationBalancePendientes: 3,

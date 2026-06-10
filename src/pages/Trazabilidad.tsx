@@ -3,6 +3,7 @@ import { USERS } from '../data/users';
 import type { User } from '../data/users';
 import { STATUS_LABELS, STATUS_CSS_CLASS, TIMELINE_DOT_CLASS } from '../data/vacationRequests';
 import type { VacationRequest } from '../data/vacationRequests';
+import Section from '../components/Section';
 import SpacePage from '../components/SpacePage';
 import Ui5Card from '../components/Ui5Card';
 
@@ -22,6 +23,7 @@ const Trazabilidad: React.FC<Props> = ({ user, requests }) => {
 
   return (
     <SpacePage spaceName="Reportes" pageName="Trazabilidad">
+      <Section title="Trazabilidad" subtitle="Historial y trazabilidad por solicitud">
       <div className="wz-grid wz-grid-2" style={{ alignItems: 'start' }}>
         {/* Left — request list */}
         <div>
@@ -182,6 +184,7 @@ const Trazabilidad: React.FC<Props> = ({ user, requests }) => {
           )}
         </div>
       </div>
+      </Section>
     </SpacePage>
   );
 };

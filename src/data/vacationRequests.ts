@@ -67,6 +67,7 @@ export interface VacationRequest {
   days: number;
   status: RequestStatus;
   comments?: string;
+  photo?: string;
   currentApprover?: string;
   history: ApprovalStep[];
 }

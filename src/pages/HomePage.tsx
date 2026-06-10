@@ -5,6 +5,7 @@ import { STATUS_LABELS, STATUS_CSS_CLASS } from '../data/vacationRequests';
 import type { VacationRequest } from '../data/vacationRequests';
 import { getGlobalKPIs } from '../data/reports';
 import type { NavigateFn } from '../types';
+import Section from '../components/Section';
 import Ui5Card from '../components/Ui5Card';
 import SpacePage from '../components/SpacePage';
 
@@ -21,22 +22,22 @@ const BalanceBreakdown: React.FC<{ user: User }> = ({ user }) => (
       <div className="wz-saldo-pill-label">
         <span className="wz-saldo-pill-dot" /> Truncas
       </div>
-      <div className="wz-saldo-pill-value">{user.vacationBalanceTruncas}</div>
-      <div className="wz-saldo-pill-sub">Año actual · Prioritario</div>
+      <div className="wz-saldo-pill-value">{user.vacationBalanceTruncas} días</div>
+      <div className="wz-saldo-pill-sub">Disponibles </div>
     </div>
     <div className="wz-saldo-pill pendientes">
       <div className="wz-saldo-pill-label">
         <span className="wz-saldo-pill-dot" /> Pendientes
       </div>
-      <div className="wz-saldo-pill-value">{user.vacationBalancePendientes}</div>
-      <div className="wz-saldo-pill-sub">Año anterior · Requieren atención</div>
+      <div className="wz-saldo-pill-value">{user.vacationBalancePendientes} días</div>
+      <div className="wz-saldo-pill-sub">Programar próximamente</div>
     </div>
     <div className="wz-saldo-pill vencidas">
       <div className="wz-saldo-pill-label">
         <span className="wz-saldo-pill-dot" /> Vencidas
       </div>
-      <div className="wz-saldo-pill-value">{user.vacationBalanceVencidas}</div>
-      <div className="wz-saldo-pill-sub">2+ años · Riesgo laboral</div>
+      <div className="wz-saldo-pill-value">{user.vacationBalanceVencidas} días</div>
+      <div className="wz-saldo-pill-sub">Requieren programación</div>
     </div>
   </div>
 );
@@ -152,85 +153,86 @@ const HomePage: React.FC<HomePageProps> = ({ user, requests, allRequests, onNavi
     const nextVacation = myApproved.find((r) => r.startDate >= new Date().toISOString().split('T')[0]);
     return (
       <SpacePage spaceName="Mis Vacaciones" pageName="Inicio">
-        <HomeHero
-          user={user}
-          pendingApprovalCount={pendingApprovalCount}
-          pendingAnulacionCount={pendingAnulacionCount}
-        />
+        <Section title="Resumen personal" subtitle="Tu saldo y solicitudes importantes">
+          <HomeHero
+            user={user}
+            pendingApprovalCount={pendingApprovalCount}
+            pendingAnulacionCount={pendingAnulacionCount}
+          />
+        </Section>
 
-        {/* Alerta vencidas */}
         {user.vacationBalanceVencidas > 0 && (
           <div className="wz-alert wz-alert-error" style={{ marginBottom: 20 }}>
             ⚠ Tienes <strong>{user.vacationBalanceVencidas} días vencidos</strong>
-            Coordina con tu jefe para programarlos y evitar riesgo laboral.
+            Coordina con tu jefe para programarlos.
           </div>
         )}
 
-        {/* Next vacation + Quick access */}
-        <div className="wz-grid wz-grid-2" style={{ marginBottom: 24 }}>
-          {/* Próximas vacaciones */}
-          <Ui5Card title="Próximas Vacaciones" subtitle={nextVacation ? 'Período aprobado' : 'Sin vacaciones programadas'}>
-            {nextVacation ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 36 }}>🌴</span>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--wz-success)' }}>
-                      {nextVacation.startDate} → {nextVacation.endDate}
-                    </div>
-                    <div style={{ fontSize: 13, color: 'var(--wz-text-secondary)' }}>
-                      {nextVacation.days} días hábiles aprobados
+        <Section title="Prioridades" subtitle="Acceso rápido a tus tareas principales">
+          <div className="wz-grid wz-grid-2">
+            <Ui5Card title="Próximas Vacaciones" subtitle={nextVacation ? 'Período aprobado' : 'Sin vacaciones programadas'}>
+              {nextVacation ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 36 }}>🌴</span>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--wz-success)' }}>
+                        {nextVacation.startDate} → {nextVacation.endDate}
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--wz-text-secondary)' }}>
+                        {nextVacation.days} días hábiles aprobados
+                      </div>
                     </div>
                   </div>
+                  <span className="wz-status status-success" style={{ alignSelf: 'flex-start' }}>
+                    {STATUS_LABELS[nextVacation.status]}
+                  </span>
                 </div>
-                <span className="wz-status status-success" style={{ alignSelf: 'flex-start' }}>
-                  {STATUS_LABELS[nextVacation.status]}
-                </span>
+              ) : (
+                <div className="wz-empty" style={{ padding: '20px 0' }}>
+                  <div className="wz-empty-icon" style={{ fontSize: 32, marginBottom: 8 }}>📅</div>
+                  <p style={{ margin: 0 }}>No hay vacaciones aprobadas próximas</p>
+                  <button
+                    className="wz-btn wz-btn-primary wz-btn-sm"
+                    style={{ marginTop: 12 }}
+                    onClick={() => onNavigate('solicitar-vacaciones')}
+                  >
+                    Solicitar Ahora
+                  </button>
+                </div>
+              )}
+            </Ui5Card>
+
+            <Ui5Card title="Accesos Rápidos" subtitle="Aplicaciones frecuentes">
+              <div className="wz-tile-grid">
+                <QuickTile icon="📅" title="Solicitar Vacaciones" accent="#DA291C" bg="#FFEBEE"
+                  onClick={() => onNavigate('solicitar-vacaciones')} />
+                <QuickTile icon="📋" title="Mis Solicitudes" accent="#188918" bg="#e8f5e9"
+                  badge={myPending.length} onClick={() => onNavigate('mis-solicitudes')} />
               </div>
-            ) : (
-              <div className="wz-empty" style={{ padding: '20px 0' }}>
-                <div className="wz-empty-icon" style={{ fontSize: 32, marginBottom: 8 }}>📅</div>
-                <p style={{ margin: 0 }}>No hay vacaciones aprobadas próximas</p>
-                <button
-                  className="wz-btn wz-btn-primary wz-btn-sm"
-                  style={{ marginTop: 12 }}
-                  onClick={() => onNavigate('solicitar-vacaciones')}
-                >
-                  Solicitar Ahora
+            </Ui5Card>
+          </div>
+        </Section>
+
+        <Section title="Solicitudes recientes" subtitle="Tus últimas solicitudes de vacaciones">
+          {requests.length > 0 ? (
+            <Ui5Card title="Solicitudes Recientes" subtitle={`${requests.length} en total`}>
+              <RecentList requests={requests} onMore={() => onNavigate('mis-solicitudes')} />
+            </Ui5Card>
+          ) : (
+            <Ui5Card title="Sin Solicitudes">
+              <div className="wz-empty">
+                <div className="wz-empty-icon">🌴</div>
+                <h3>Aún no tienes solicitudes</h3>
+                <p>Crea tu primera solicitud de vacaciones.</p>
+                <button className="wz-btn wz-btn-primary" style={{ marginTop: 16 }}
+                  onClick={() => onNavigate('solicitar-vacaciones')}>
+                  Solicitar Vacaciones
                 </button>
               </div>
-            )}
-          </Ui5Card>
-
-          {/* Accesos rápidos */}
-          <Ui5Card title="Accesos Rápidos" subtitle="Aplicaciones frecuentes">
-            <div className="wz-tile-grid">
-              <QuickTile icon="📅" title="Solicitar Vacaciones" accent="#DA291C" bg="#FFEBEE"
-                onClick={() => onNavigate('solicitar-vacaciones')} />
-              <QuickTile icon="📋" title="Mis Solicitudes" accent="#188918" bg="#e8f5e9"
-                badge={myPending.length} onClick={() => onNavigate('mis-solicitudes')} />
-            </div>
-          </Ui5Card>
-        </div>
-
-        {/* Solicitudes recientes */}
-        {requests.length > 0 ? (
-          <Ui5Card title="Solicitudes Recientes" subtitle={`${requests.length} en total`}>
-            <RecentList requests={requests} onMore={() => onNavigate('mis-solicitudes')} />
-          </Ui5Card>
-        ) : (
-          <Ui5Card title="Sin Solicitudes">
-            <div className="wz-empty">
-              <div className="wz-empty-icon">🌴</div>
-              <h3>Aún no tienes solicitudes</h3>
-              <p>Crea tu primera solicitud de vacaciones.</p>
-              <button className="wz-btn wz-btn-primary" style={{ marginTop: 16 }}
-                onClick={() => onNavigate('solicitar-vacaciones')}>
-                Solicitar Vacaciones
-              </button>
-            </div>
-          </Ui5Card>
-        )}
+            </Ui5Card>
+          )}
+        </Section>
       </SpacePage>
     );
   }
@@ -240,35 +242,13 @@ const HomePage: React.FC<HomePageProps> = ({ user, requests, allRequests, onNavi
     const teamRequests = allRequests.filter((r) => r.userRole !== 'jefe_aprobador' && r.userRole !== 'administrador_gh');
     return (
       <SpacePage spaceName="Mis Vacaciones" pageName="Inicio">
-        <HomeHero
-          user={user}
-          pendingApprovalCount={pendingApprovalCount}
-          pendingAnulacionCount={pendingAnulacionCount}
-        />
-
-        {/* Approver action KPIs */}
-        <div className="wz-approver-kpi-row">
-          <div className="wz-approver-kpi" style={{ '--akpi-color': '#DA291C' } as React.CSSProperties}>
-            <div className="wz-approver-kpi-num">{pendingApprovalCount}</div>
-            <div className="wz-approver-kpi-label">Pend. Aprobación</div>
-          </div>
-          <div className="wz-approver-kpi" style={{ '--akpi-color': '#e76500' } as React.CSSProperties}>
-            <div className="wz-approver-kpi-num">{pendingAnulacionCount}</div>
-            <div className="wz-approver-kpi-label">Pend. Anulación</div>
-          </div>
-          <div className="wz-approver-kpi" style={{ '--akpi-color': '#188918' } as React.CSSProperties}>
-            <div className="wz-approver-kpi-num">{teamRequests.filter((r) => r.status === 'aprobado').length}</div>
-            <div className="wz-approver-kpi-label">Aprobadas Equipo</div>
-          </div>
-          <div className="wz-approver-kpi" style={{ '--akpi-color': '#C62828' } as React.CSSProperties}>
-            <div className="wz-approver-kpi-num">{teamRequests.filter((r) => r.status === 'rechazado').length}</div>
-            <div className="wz-approver-kpi-label">Rechazadas</div>
-          </div>
-          <div className="wz-approver-kpi" style={{ '--akpi-color': '#6b3fa0' } as React.CSSProperties}>
-            <div className="wz-approver-kpi-num">{teamRequests.length}</div>
-            <div className="wz-approver-kpi-label">Total Equipo</div>
-          </div>
-        </div>
+        <Section title="Resumen de aprobación" subtitle="Estado de tu equipo y prioridades">
+          <HomeHero
+            user={user}
+            pendingApprovalCount={pendingApprovalCount}
+            pendingAnulacionCount={pendingAnulacionCount}
+          />
+        </Section>
 
         {pendingApprovalCount > 0 && (
           <div className="wz-alert wz-alert-warning" style={{ marginBottom: 20 }}>
@@ -281,29 +261,32 @@ const HomePage: React.FC<HomePageProps> = ({ user, requests, allRequests, onNavi
           </div>
         )}
 
-        <Ui5Card title="Accesos Rápidos" subtitle="Gestión de equipo" style={{ marginBottom: 24 }}>
-          <div className="wz-tile-grid">
-            <QuickTile icon="✅" title="Solicitudes Pendientes" accent="#DA291C" bg="#FFEBEE"
-              badge={pendingApprovalCount} onClick={() => onNavigate('solicitudes-pendientes', 'aprobaciones')} />
-            <QuickTile icon="🗑️" title="Anulaciones" accent="#e76500" bg="#fff8f0"
-              badge={pendingAnulacionCount} onClick={() => onNavigate('gestion-anulaciones', 'aprobaciones')} />
-            <QuickTile icon="📊" title="Reportes" accent="#009A99" bg="#E0F7FA"
-              onClick={() => onNavigate('reporte-vacaciones', 'reportes')} />
-            <QuickTile icon="🔍" title="Trazabilidad" accent="#6b3fa0" bg="#f3eaff"
-              onClick={() => onNavigate('trazabilidad', 'reportes')} />
-          </div>
-        </Ui5Card>
-
-        {/* Solicitudes recientes del equipo */}
-        <Ui5Card title="Solicitudes Recientes del Equipo" subtitle={`${teamRequests.length} en total`}>
-          {teamRequests.length > 0 ? (
-            <RecentList requests={teamRequests} onMore={() => onNavigate('solicitudes-pendientes', 'aprobaciones')} />
-          ) : (
-            <div className="wz-empty" style={{ padding: '20px 0' }}>
-              <p>Sin solicitudes de equipo recientes.</p>
+        <Section title="Accesos rápidos" subtitle="Gestión de equipo">
+          <Ui5Card title="Accesos Rápidos" subtitle="Gestión de equipo">
+            <div className="wz-tile-grid">
+              <QuickTile icon="✅" title="Solicitudes Pendientes" accent="#DA291C" bg="#FFEBEE"
+                badge={pendingApprovalCount} onClick={() => onNavigate('solicitudes-pendientes', 'aprobaciones')} />
+              <QuickTile icon="🗑️" title="Anulaciones" accent="#e76500" bg="#fff8f0"
+                badge={pendingAnulacionCount} onClick={() => onNavigate('gestion-anulaciones', 'aprobaciones')} />
+              <QuickTile icon="📊" title="Reportes" accent="#009A99" bg="#E0F7FA"
+                onClick={() => onNavigate('reporte-vacaciones', 'reportes')} />
+              <QuickTile icon="🔍" title="Trazabilidad" accent="#6b3fa0" bg="#f3eaff"
+                onClick={() => onNavigate('trazabilidad', 'reportes')} />
             </div>
-          )}
-        </Ui5Card>
+          </Ui5Card>
+        </Section>
+
+        <Section title="Solicitudes recientes del equipo" subtitle="Últimas solicitudes de tu equipo">
+          <Ui5Card title="Solicitudes Recientes del Equipo" subtitle={`${teamRequests.length} en total`}>
+            {teamRequests.length > 0 ? (
+              <RecentList requests={teamRequests} onMore={() => onNavigate('solicitudes-pendientes', 'aprobaciones')} />
+            ) : (
+              <div className="wz-empty" style={{ padding: '20px 0' }}>
+                <p>Sin solicitudes de equipo recientes.</p>
+              </div>
+            )}
+          </Ui5Card>
+        </Section>
       </SpacePage>
     );
   }
@@ -311,39 +294,42 @@ const HomePage: React.FC<HomePageProps> = ({ user, requests, allRequests, onNavi
   /* ── ADMINISTRADOR GH VIEW ─────────────────────────────── */
   return (
     <SpacePage spaceName="Mis Vacaciones" pageName="Inicio">
-      <HomeHero
-        user={user}
-        pendingApprovalCount={pendingApprovalCount}
-        pendingAnulacionCount={pendingAnulacionCount}
-      />
+      <Section title="Resumen global" subtitle="Visión de solicitudes GH y estado global">
+        <HomeHero
+          user={user}
+          pendingApprovalCount={pendingApprovalCount}
+          pendingAnulacionCount={pendingAnulacionCount}
+        />
+      </Section>
 
-      {/* Global KPIs */}
-      <div className="wz-approver-kpi-row">
-        <div className="wz-approver-kpi" style={{ '--akpi-color': '#DA291C' } as React.CSSProperties}>
-          <div className="wz-approver-kpi-num">{pendingApprovalCount}</div>
-          <div className="wz-approver-kpi-label">Pend. GH</div>
+      <Section title="KPIs globales" subtitle="Indicadores clave para Administración GH">
+        <div className="wz-approver-kpi-row">
+          <div className="wz-approver-kpi" style={{ '--akpi-color': '#DA291C' } as React.CSSProperties}>
+            <div className="wz-approver-kpi-num">{pendingApprovalCount}</div>
+            <div className="wz-approver-kpi-label">Pend. GH</div>
+          </div>
+          <div className="wz-approver-kpi" style={{ '--akpi-color': '#188918' } as React.CSSProperties}>
+            <div className="wz-approver-kpi-num">{kpis.aprobadas}</div>
+            <div className="wz-approver-kpi-label">Aprobadas</div>
+          </div>
+          <div className="wz-approver-kpi" style={{ '--akpi-color': '#C62828' } as React.CSSProperties}>
+            <div className="wz-approver-kpi-num">{kpis.rechazadas}</div>
+            <div className="wz-approver-kpi-label">Rechazadas</div>
+          </div>
+          <div className="wz-approver-kpi" style={{ '--akpi-color': '#6b3fa0' } as React.CSSProperties}>
+            <div className="wz-approver-kpi-num">{kpis.anuladas}</div>
+            <div className="wz-approver-kpi-label">Anuladas</div>
+          </div>
+          <div className="wz-approver-kpi" style={{ '--akpi-color': '#e76500' } as React.CSSProperties}>
+            <div className="wz-approver-kpi-num">{kpis.pendientes_anulacion}</div>
+            <div className="wz-approver-kpi-label">Pend. Anulación</div>
+          </div>
+          <div className="wz-approver-kpi" style={{ '--akpi-color': '#009A99' } as React.CSSProperties}>
+            <div className="wz-approver-kpi-num">{kpis.total}</div>
+            <div className="wz-approver-kpi-label">Total Global</div>
+          </div>
         </div>
-        <div className="wz-approver-kpi" style={{ '--akpi-color': '#188918' } as React.CSSProperties}>
-          <div className="wz-approver-kpi-num">{kpis.aprobadas}</div>
-          <div className="wz-approver-kpi-label">Aprobadas</div>
-        </div>
-        <div className="wz-approver-kpi" style={{ '--akpi-color': '#C62828' } as React.CSSProperties}>
-          <div className="wz-approver-kpi-num">{kpis.rechazadas}</div>
-          <div className="wz-approver-kpi-label">Rechazadas</div>
-        </div>
-        <div className="wz-approver-kpi" style={{ '--akpi-color': '#6b3fa0' } as React.CSSProperties}>
-          <div className="wz-approver-kpi-num">{kpis.anuladas}</div>
-          <div className="wz-approver-kpi-label">Anuladas</div>
-        </div>
-        <div className="wz-approver-kpi" style={{ '--akpi-color': '#e76500' } as React.CSSProperties}>
-          <div className="wz-approver-kpi-num">{kpis.pendientes_anulacion}</div>
-          <div className="wz-approver-kpi-label">Pend. Anulación</div>
-        </div>
-        <div className="wz-approver-kpi" style={{ '--akpi-color': '#009A99' } as React.CSSProperties}>
-          <div className="wz-approver-kpi-num">{kpis.total}</div>
-          <div className="wz-approver-kpi-label">Total Global</div>
-        </div>
-      </div>
+      </Section>
 
       {pendingApprovalCount > 0 && (
         <div className="wz-alert wz-alert-warning" style={{ marginBottom: 20 }}>
@@ -351,21 +337,24 @@ const HomePage: React.FC<HomePageProps> = ({ user, requests, allRequests, onNavi
         </div>
       )}
 
-      <Ui5Card title="Accesos Rápidos" subtitle="Gestión global" style={{ marginBottom: 24 }}>
-        <div className="wz-tile-grid">
-          <QuickTile icon="✅" title="Solicitudes GH" accent="#DA291C" bg="#FFEBEE"
-            badge={pendingApprovalCount} onClick={() => onNavigate('solicitudes-pendientes', 'aprobaciones')} />
-          <QuickTile icon="📊" title="Reportes Globales" accent="#009A99" bg="#E0F7FA"
-            onClick={() => onNavigate('reporte-vacaciones', 'reportes')} />
-          <QuickTile icon="🔍" title="Trazabilidad" accent="#6b3fa0" bg="#f3eaff"
-            onClick={() => onNavigate('trazabilidad', 'reportes')} />
-        </div>
-      </Ui5Card>
+      <Section title="Accesos rápidos" subtitle="Gestión global">
+        <Ui5Card title="Accesos Rápidos" subtitle="Gestión global">
+          <div className="wz-tile-grid">
+            <QuickTile icon="✅" title="Solicitudes GH" accent="#DA291C" bg="#FFEBEE"
+              badge={pendingApprovalCount} onClick={() => onNavigate('solicitudes-pendientes', 'aprobaciones')} />
+            <QuickTile icon="📊" title="Reportes Globales" accent="#009A99" bg="#E0F7FA"
+              onClick={() => onNavigate('reporte-vacaciones', 'reportes')} />
+            <QuickTile icon="🔍" title="Trazabilidad" accent="#6b3fa0" bg="#f3eaff"
+              onClick={() => onNavigate('trazabilidad', 'reportes')} />
+          </div>
+        </Ui5Card>
+      </Section>
 
-      {/* All requests overview */}
-      <Ui5Card title="Solicitudes Recientes" subtitle={`${allRequests.length} solicitudes en el sistema`}>
-        <RecentList requests={allRequests} onMore={() => onNavigate('reporte-vacaciones', 'reportes')} />
-      </Ui5Card>
+      <Section title="Solicitudes recientes" subtitle="Solicitudes en el sistema">
+        <Ui5Card title="Solicitudes Recientes" subtitle={`${allRequests.length} solicitudes en el sistema`}>
+          <RecentList requests={allRequests} onMore={() => onNavigate('reporte-vacaciones', 'reportes')} />
+        </Ui5Card>
+      </Section>
     </SpacePage>
   );
 };

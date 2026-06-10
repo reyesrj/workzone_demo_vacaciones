@@ -25,41 +25,34 @@ const LoginWorkZone: React.FC<LoginWorkZoneProps> = ({ onLogin }) => {
 
   return (
     <div className="wz-login-root">
-      {/* ── Brand panel (left) ──────────────────────────── */}
-      <div className="wz-login-brand">
-        <div className="wz-login-brand-top">
-          <span className="wz-claro-logo-pill">claro</span>
+      <div className="wz-login-card">
+        <div className="wz-login-card-brand">
+          <img
+            src={`${import.meta.env.BASE_URL}claro-logo.svg`}
+            alt="Claro Perú"
+            className="wz-login-claro-logo"
+          />
+          <div className="wz-login-card-copy">
+            
+            <h1 className="wz-login-card-title">Portal de Vacaciones</h1>
+            <p className="wz-login-card-subtitle">
+              Acceso corporativo demo para explorar el portal Claro Perú.
+            </p>
+          </div>
         </div>
 
-        <div className="wz-login-brand-body">
-          <span className="wz-login-brand-icon">🏖️</span>
-          <h1 className="wz-login-brand-title">
-            Portal de<br />Vacaciones
-          </h1>
-          <p className="wz-login-brand-sub">
-            Gestión de Vacaciones<br />Corporativas Claro Perú
-          </p>
-        </div>
-
-        <div className="wz-login-brand-footer">
-          © 2026 Claro Perú — Portal de Vacaciones
-        </div>
-      </div>
-
-      {/* ── Form panel (right) ────────────────────────── */}
-      <div className="wz-login-form-panel">
         <div className="wz-login-form-inner">
           <div className="wz-login-form-header">
-            <h2 className="wz-login-form-title">Iniciar Sesión</h2>
+            <h2 className="wz-login-form-title">Iniciar sesión</h2>
             <p className="wz-login-form-desc">
-              Selecciona un usuario demo para explorar el portal
+              Selecciona tu usuario demo y accede al portal de vacaciones.
             </p>
           </div>
 
           <div className="wz-login-form-fields">
             <div className="wz-form-group">
               <label className="wz-form-label" htmlFor="user-select">
-                Usuario Demo
+                Usuario demo
               </label>
               <select
                 id="user-select"
@@ -100,12 +93,12 @@ const LoginWorkZone: React.FC<LoginWorkZoneProps> = ({ onLogin }) => {
               </div>
             </div>
 
-            <button className="wz-btn-login" onClick={handleLogin}>
-              Ingresar al Portal →
+            <button type="button" className="wz-btn-login" onClick={handleLogin}>
+              Ingresar al portal →
             </button>
           </div>
 
-          <p style={{ marginTop: 24, fontSize: 11, color: '#aaa', textAlign: 'center' }}>
+          <p className="wz-login-footer">
             Demo · Sin autenticación real
           </p>
         </div>

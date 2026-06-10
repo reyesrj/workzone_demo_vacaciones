@@ -3,6 +3,7 @@ import { ROLE_LABELS } from '../data/users';
 import type { User } from '../data/users';
 import { STATUS_LABELS, STATUS_CSS_CLASS } from '../data/vacationRequests';
 import type { VacationRequest, RequestStatus } from '../data/vacationRequests';
+import Section from '../components/Section';
 import SpacePage from '../components/SpacePage';
 import Ui5Card from '../components/Ui5Card';
 
@@ -82,7 +83,8 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
 
   return (
     <SpacePage spaceName={spaceName} pageName={pageTitle}>
-      {mode === 'pendientes' && (
+      <Section title={pageTitle} subtitle="Solicitudes en cola para revisión">
+        {mode === 'pendientes' && (
         <div className="wz-alert wz-alert-info" style={{ marginBottom: 16 }}>
           {isAdmin
             ? 'Mostrando solicitudes de Colaboradores Rotativos pendientes de aprobación GH.'
@@ -183,6 +185,7 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
           </div>
         </Ui5Card>
       )}
+      </Section>
 
       {/* ── Action Confirmation Modal ─────────────────── */}
       {actionTarget && actionReq && (

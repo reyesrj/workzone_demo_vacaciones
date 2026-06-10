@@ -3,6 +3,7 @@ import type { User } from '../data/users';
 import { STATUS_LABELS, STATUS_CSS_CLASS } from '../data/vacationRequests';
 import type { VacationRequest, RequestStatus } from '../data/vacationRequests';
 import type { NavigateFn } from '../types';
+import Section from '../components/Section';
 import SpacePage from '../components/SpacePage';
 import Ui5Card from '../components/Ui5Card';
 
@@ -18,6 +19,16 @@ const MisSolicitudes: React.FC<Props> = ({ user, requests, onUpdateStatus, onNav
   const [anulComment, setAnulComment] = useState('');
   const [anulTarget, setAnulTarget] = useState<string | null>(null);
 
+  const firstName = user.name.split(' ')[0];
+  const availableDays = user.vacationBalance;
+  const expiringDays = user.vacationBalancePendientes;
+  const pendingApprovalDays = requests
+    .filter((req) => ['pendiente_jefe', 'pendiente_gh', 'pendiente_anulacion'].includes(req.status))
+    .reduce((sum, req) => sum + req.days, 0);
+  const plannedDays = requests
+    .filter((req) => ['aprobado', 'pendiente_jefe', 'pendiente_gh', 'pendiente_anulacion'].includes(req.status))
+    .reduce((sum, req) => sum + req.days, 0);
+
   const handleSolicitarAnulacion = (id: string) => {
     if (!anulComment.trim()) return;
     onUpdateStatus(id, 'pendiente_anulacion', user.name, anulComment.trim());
@@ -28,7 +39,8 @@ const MisSolicitudes: React.FC<Props> = ({ user, requests, onUpdateStatus, onNav
   if (requests.length === 0) {
     return (
       <SpacePage spaceName="Mis Vacaciones" pageName="Mis Solicitudes">
-        <Ui5Card title="Mis Solicitudes">
+        <Section title="Mis Solicitudes" subtitle="Revisa el estado de tus solicitudes">  
+          <Ui5Card title="Mis Solicitudes">
           <div className="wz-empty">
             <div className="wz-empty-icon">📋</div>
             <h3>Sin solicitudes</h3>
@@ -42,12 +54,63 @@ const MisSolicitudes: React.FC<Props> = ({ user, requests, onUpdateStatus, onNav
             </button>
           </div>
         </Ui5Card>
+        </Section>
       </SpacePage>
     );
   }
 
   return (
     <SpacePage spaceName="Mis Vacaciones" pageName="Mis Solicitudes">
+      <Section title="Mis Solicitudes" subtitle="Revisa aquí tus solicitudes y el avance de tu descanso">
+        <div className="wz-mis-solicitudes-banner">
+          <div className="wz-mis-solicitudes-banner-profile">
+            <div
+              className="wz-avatar-shell"
+              style={{ background: `linear-gradient(135deg, ${user.role === 'colaborador_rotativo' ? '#5d3fd3' : '#da1e28'}, #ff8a3d)` }}
+            >
+              {user.initials}
+            </div>
+            <div>
+              <div className="wz-mis-solicitudes-banner-title">
+                Hola {firstName}, revisa tu descanso pendiente.
+              </div>
+              <div className="wz-mis-solicitudes-banner-copy">
+                Aquí tienes tu información de saldo, solicitudes y aprobaciones.
+              </div>
+            </div>
+          </div>
+
+          <div className="wz-mis-solicitudes-banner-info">
+            <span>{user.department}</span>
+            <span>{user.schedule}</span>
+            <span>Jefe aprobador: {user.approver ?? 'No asignado'}</span>
+          </div>
+        </div>
+
+        <div className="wz-mis-solicitudes-summary-cards">
+          <div className="wz-summary-card">
+            <span>Días disponibles</span>
+            <strong>{availableDays} días</strong>
+            <p>Saldo listo para usar.</p>
+          </div>
+          <div className="wz-summary-card">
+            <span>Por vencer al 31/12/2026</span>
+            <strong>{expiringDays} días</strong>
+            <p>Aprovecha este saldo antes de fin de año.</p>
+          </div>
+          <div className="wz-summary-card">
+            <span>Pendientes de aprobación</span>
+            <strong>{pendingApprovalDays} días</strong>
+            <p>Solicitudes en revisión.</p>
+          </div>
+          <div className="wz-summary-card">
+            <span>Vacaciones programadas</span>
+            <strong>{plannedDays} días</strong>
+            <p>Días ya registrados en solicitudes activas.</p>
+          </div>
+        </div>
+      </Section>
+
       <Ui5Card
         title="Mis Solicitudes de Vacaciones"
         subtitle={`${requests.length} solicitud(es) en total`}
@@ -128,6 +191,7 @@ const MisSolicitudes: React.FC<Props> = ({ user, requests, onUpdateStatus, onNav
           </table>
         </div>
       </Ui5Card>
+        
 
       {/* ── Detail Modal ──────────────────────────────── */}
       {detail && (
@@ -234,6 +298,7 @@ const MisSolicitudes: React.FC<Props> = ({ user, requests, onUpdateStatus, onNav
           </div>
         </div>
       )}
+      
     </SpacePage>
   );
 };

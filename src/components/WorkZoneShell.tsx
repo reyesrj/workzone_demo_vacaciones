@@ -176,7 +176,12 @@ const WorkZoneShell: React.FC<Props> = ({ user, onLogout }) => {
             </div>
           </div>
           <div className="wz-header-logo-area">
-            <span className="wz-claro-brand">claro</span>
+            <img
+              src={`${import.meta.env.BASE_URL}claro-logo.svg`}
+                alt="Claro Perú"
+                className="wz-claro-logo"
+                style={{ height: "24px" }}
+              />
             <div className="wz-header-app-separator" />
             <span className="wz-header-app-name">Portal de Vacaciones</span>
           </div>
@@ -228,7 +233,7 @@ const WorkZoneShell: React.FC<Props> = ({ user, onLogout }) => {
       </header>
 
       {/* ── Spaces Navigation ────────────────────────────────────── */}
-      <nav className="wz-spaces-nav">
+      <nav className="wz-spaces-nav" aria-label="Spaces">
         {visibleSpaces.map((space) => (
           <button
             key={space.id}
@@ -242,7 +247,7 @@ const WorkZoneShell: React.FC<Props> = ({ user, onLogout }) => {
       </nav>
 
       {/* ── Pages Navigation ────────────────────────────────────── */}
-      <nav className="wz-pages-nav">
+      <nav className="wz-pages-nav" aria-label="Pages">
         {currentSpace.pages.map((page) => (
           <button
             key={page.id}
