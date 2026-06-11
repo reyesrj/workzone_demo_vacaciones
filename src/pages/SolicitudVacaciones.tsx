@@ -4,8 +4,6 @@ import type { User } from '../data/users';
 import { INITIAL_REQUESTS } from '../data/vacationRequests';
 import type { VacationRequest, RequestStatus } from '../data/vacationRequests';
 import type { NavigateFn } from '../types';
-import Ui5Card from '../components/Ui5Card';
-import SpacePage from '../components/SpacePage';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
@@ -26,7 +24,6 @@ const countWorkingDays = (start: string, end: string): number => {
   return count;
 };
 
-/** Returns the next working day after the given date string */
 const calcReturnDate = (endDate: string): string => {
   if (!endDate) return '';
   const d = new Date(endDate + 'T00:00:00');
@@ -40,15 +37,25 @@ const SPANISH_MONTHS = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
+const SHORT_MONTHS = [
+  'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+  'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
+];
+
+const fmtDate = (dateStr: string): string => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  return `${d.getDate()} ${SHORT_MONTHS[d.getMonth()]}. ${d.getFullYear()}`;
+};
+
 const getCalendarDays = (year: number, month: number) => {
   const firstOfMonth = new Date(year, month, 1);
-  const firstWeekDay = (firstOfMonth.getDay() + 6) % 7; // Lunes = 0
+  const firstWeekDay = (firstOfMonth.getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const prevMonthDays = new Date(year, month, 0).getDate();
-  const cells = [] as Array<{ date: Date; currentMonth: boolean }>;
-
-  for (let index = 0; index < 42; index += 1) {
-    const dayNumber = index - firstWeekDay + 1;
+  const cells: Array<{ date: Date; currentMonth: boolean }> = [];
+  for (let i = 0; i < 42; i++) {
+    const dayNumber = i - firstWeekDay + 1;
     if (dayNumber < 1) {
       cells.push({ date: new Date(year, month - 1, prevMonthDays + dayNumber), currentMonth: false });
     } else if (dayNumber > daysInMonth) {
@@ -57,7 +64,6 @@ const getCalendarDays = (year: number, month: number) => {
       cells.push({ date: new Date(year, month, dayNumber), currentMonth: true });
     }
   }
-
   return cells;
 };
 
@@ -78,46 +84,36 @@ interface Props {
 }
 
 const SolicitudVacaciones: React.FC<Props> = ({ user, onAddRequest, onNavigate }) => {
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [comments, setComments] = useState('');
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState('');
+  const today = new Date().toISOString().split('T')[0];
+  const [startDate, setStartDate]       = useState(today);
+  const [endDate, setEndDate]           = useState(today);
+  const [comments, setComments]         = useState('');
+  const [submitted, setSubmitted]       = useState(false);
+  const [error, setError]               = useState('');
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
-  const [photoUrl, setPhotoUrl] = useState('');
-
-  const [photoName, setPhotoName] = useState('');
   const [advanceRequest, setAdvanceRequest] = useState(false);
-  const [loanRequest, setLoanRequest] = useState(false);
-  const days = countWorkingDays(startDate, endDate);
-  const returnDate = calcReturnDate(endDate);
-  const isRotativo = user.role === 'colaborador_rotativo';
-  const totalBalance = user.vacationBalanceTruncas + user.vacationBalancePendientes + user.vacationBalanceVencidas;
-  const firstName = user.name.split(' ')[0];
+  const [loanRequest, setLoanRequest]   = useState(false);
+  const [showConfirm, setShowConfirm]   = useState(false);
+  const [detailsOpen, setDetailsOpen]   = useState(false);
 
-  const pendingApprovalDays = INITIAL_REQUESTS
-    .filter((req) => req.userId === user.id && ['pendiente_jefe', 'pendiente_gh', 'pendiente_anulacion'].includes(req.status))
-    .reduce((sum, req) => sum + req.days, 0);
+  const days        = countWorkingDays(startDate, endDate);
+  const returnDate  = calcReturnDate(endDate);
+  const isRotativo  = user.role === 'colaborador_rotativo';
+  const firstName   = user.name.split(' ')[0];
+  const currentYear = new Date().getFullYear();
 
-  const scheduledDays = INITIAL_REQUESTS
-    .filter((req) => req.userId === user.id && ['aprobado', 'aprobado_jefe'].includes(req.status))
-    .reduce((sum, req) => sum + req.days, 0);
+  const pendingDays = INITIAL_REQUESTS
+    .filter((r) => r.userId === user.id &&
+      ['pendiente_jefe', 'pendiente_gh', 'pendiente_anulacion'].includes(r.status))
+    .reduce((sum, r) => sum + r.days, 0);
 
-  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (photoUrl) {
-        URL.revokeObjectURL(photoUrl);
-      }
-      setPhotoUrl(URL.createObjectURL(file));
-      setPhotoName(file.name);
-    }
-  };
+  const approverInitials = (user.approver ?? 'JA')
+    .split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
   const validate = (): string => {
     if (!startDate) return 'Selecciona una fecha de inicio.';
-    if (!endDate) return 'Selecciona una fecha de fin.';
+    if (!endDate)   return 'Selecciona una fecha de fin.';
     if (new Date(endDate + 'T00:00:00') < new Date(startDate + 'T00:00:00'))
       return 'La fecha de fin debe ser posterior a la de inicio.';
     if (days === 0) return 'El período seleccionado no contiene días hábiles.';
@@ -126,13 +122,16 @@ const SolicitudVacaciones: React.FC<Props> = ({ user, onAddRequest, onNavigate }
     return '';
   };
 
-  const handleSubmit = () => {
+  const handleSubmitClick = () => {
     const msg = validate();
     if (msg) { setError(msg); return; }
     setError('');
+    setShowConfirm(true);
+  };
 
+  const handleConfirm = () => {
     const today = new Date().toISOString().split('T')[0];
-    const now = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    const now   = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     const initialStatus: RequestStatus = 'pendiente_jefe';
 
     const newReq: VacationRequest = {
@@ -145,15 +144,28 @@ const SolicitudVacaciones: React.FC<Props> = ({ user, onAddRequest, onNavigate }
       days,
       status: initialStatus,
       comments: comments.trim() || undefined,
-      currentApprover: 'María López',
-      photo: photoName || undefined,
+      currentApprover: user.approver ?? 'Jefe Aprobador',
       history: [
-        { status: 'creado', label: 'Solicitud creada', by: user.name, actorRole: ROLE_LABELS[user.role], date: today, time: now },
-        { status: 'pendiente_jefe', label: 'Enviada a Jefe Aprobador', by: 'Sistema', date: today, time: now },
+        {
+          status: 'creado',
+          label: 'Solicitud creada',
+          by: user.name,
+          actorRole: ROLE_LABELS[user.role],
+          date: today,
+          time: now,
+        },
+        {
+          status: 'pendiente_jefe',
+          label: 'Enviada a Jefe Aprobador',
+          by: 'Sistema',
+          date: today,
+          time: now,
+        },
       ],
     };
 
     onAddRequest(newReq);
+    setShowConfirm(false);
     setSubmitted(true);
   };
 
@@ -161,384 +173,592 @@ const SolicitudVacaciones: React.FC<Props> = ({ user, onAddRequest, onNavigate }
     setStartDate('');
     setEndDate('');
     setComments('');
-    setPhotoName('');
-    if (photoUrl) {
-      URL.revokeObjectURL(photoUrl);
-    }
-    setPhotoUrl('');
     setSubmitted(false);
     setError('');
+    setAdvanceRequest(false);
+    setLoanRequest(false);
   };
 
+  /* ---------------------------------------------------------------- */
+  /*  Success state                                                    */
+  /* ---------------------------------------------------------------- */
   if (submitted) {
     return (
-      <SpacePage spaceName="Mis Vacaciones" pageName="Solicitar Vacaciones">
-        <Ui5Card title="Solicitud Enviada">
-          <div className="wz-empty" style={{ paddingTop: 32, paddingBottom: 32 }}>
-            <div className="wz-empty-icon">✅</div>
-            <h3>¡Solicitud enviada correctamente!</h3>
-            <p>
-              Tu solicitud de {days} días hábiles ({startDate} → {endDate}) ha sido
-              enviada {isRotativo ? 'al Jefe Aprobador y Administración GH.' : 'al Jefe Aprobador.'}
-            </p>
-            {photoName && (
-              <p style={{ marginTop: 8 }}><strong>Archivo adjunto:</strong> {photoName}</p>
+      <div className="wz-space-page">
+        <div className="wz-breadcrumb">Mis Vacaciones › Solicitar Vacaciones</div>
+        <h2 className="wz-page-heading">Solicitar Vacaciones</h2>
+        <div className="sv-success-card">
+          <div className="sv-success-emoji">🎉</div>
+          <h3 className="sv-success-title">¡Solicitud enviada!</h3>
+          <p className="sv-success-body">
+            Tu solicitud de <strong>{days} días hábiles</strong> ({fmtDate(startDate)} → {fmtDate(endDate)})
+            fue enviada correctamente{' '}
+            {isRotativo
+              ? 'al Jefe Aprobador y Administración GH.'
+              : 'al Jefe Aprobador.'}
+          </p>
+          <div className="sv-success-flow">
+            <span className="sv-success-step sv-success-step--done">✓ Enviada</span>
+            <span className="sv-success-arrow">→</span>
+            <span className="sv-success-step">Jefe Aprobador</span>
+            {isRotativo && (
+              <>
+                <span className="sv-success-arrow">→</span>
+                <span className="sv-success-step">Admin GH</span>
+              </>
             )}
-            <div className="wz-flow" style={{ marginTop: 16, justifyContent: 'center' }}>
-              <span className="wz-flow-step">Jefe Aprobador</span>
-              {isRotativo && (
-                <>
-                  <span className="wz-flow-arrow">→</span>
-                  <span className="wz-flow-step">Administrador GH</span>
-                </>
-              )}
-              <span className="wz-flow-arrow">→</span>
-              <span className="wz-flow-step">Aprobado</span>
-            </div>
-            <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-              <button className="wz-btn wz-btn-outline" onClick={handleReset}>
-                Nueva Solicitud
-              </button>
-              <button
-                className="wz-btn wz-btn-primary"
-                onClick={() => onNavigate('mis-solicitudes')}
-              >
-                Ver Mis Solicitudes
-              </button>
-            </div>
+            <span className="sv-success-arrow">→</span>
+            <span className="sv-success-step">Aprobado</span>
           </div>
-        </Ui5Card>
-      </SpacePage>
+          <div className="sv-success-actions">
+            <button className="wz-btn wz-btn-outline" onClick={handleReset}>
+              Nueva Solicitud
+            </button>
+            <button className="wz-btn wz-btn-primary" onClick={() => onNavigate('mis-solicitudes')}>
+              Ver Mis Solicitudes
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 
+  /* ---------------------------------------------------------------- */
+  /*  Main form                                                        */
+  /* ---------------------------------------------------------------- */
+  const calendarCells = getCalendarDays(calendarYear, calendarMonth);
+  const hasSelection  = !!startDate;
+  const hasRange      = !!(startDate && endDate);
+
   return (
-    <SpacePage spaceName="Mis Vacaciones" pageName="Solicitar Vacaciones">
-      <div className="wz-request-top-hero wz-request-top-hero-bg">
-        <div className="wz-request-top-avatar">
-          <div className="wz-request-avatar-frame">
-            {photoUrl ? (
-              <img src={photoUrl} alt={`${firstName}`} className="wz-request-avatar-image" />
-            ) : (
-              <div className="wz-request-avatar-circle">{user.initials}</div>
-            )}
-            <label className="wz-photo-upload-label">
-              <input type="file" accept="image/*" hidden onChange={handlePhotoChange} />
-              <span className="wz-photo-upload-icon">📷</span>
-            </label>
+    <>
+      {/* ── Main content wrapper ─────────────────────────────────── */}
+      <div className="wz-space-page sv-wrapper">
+        <div className="wz-breadcrumb">Mis Vacaciones › Solicitar Vacaciones</div>
+        <h2 className="wz-page-heading">Solicitar Vacaciones</h2>
+
+        {/* ── User hero ──────────────────────────────────────────── */}
+        <div className="sv-hero">
+          <div className="sv-hero-profile">
+            <div
+              className="sv-hero-avatar"
+              style={user.photo ? { background: 'transparent', padding: 0, overflow: 'hidden' } : {}}
+            >
+              {user.photo
+                ? <img src={`${import.meta.env.BASE_URL}${user.photo}`} alt={user.name} className="sv-avatar-img" />
+                : user.initials}
+            </div>
+            <div className="sv-hero-info">
+              <div className="sv-hero-name">Hola, {firstName} 👋</div>
+              {/* Desktop: muestra área/departamento */}
+              <div className="sv-hero-dept">{user.department}</div>
+              {/* Mobile: muestra días disponibles en lugar del área */}
+              <div className="sv-hero-mobile-balance">
+                Tienes <strong>{user.vacationBalance} días</strong> disponibles
+              </div>
+              <button
+                className="sv-hero-link"
+                onClick={() => onNavigate('mis-solicitudes')}
+              >
+                ℹ️ ¿Cuántos días tengo disponibles? ›
+              </button>
+            </div>
           </div>
-          <div>
-            <h2>{firstName}, planifica tu próxima aventura</h2>
-            <p>Estás a un paso de disfrutar tu descanso.</p>
-            <div className="wz-request-top-info">
-              <span>Código: {user.codigoEmpleado} | </span>
-              <span>Área: {user.department} | </span>
-              <span>Aprobador: {user.approver ?? 'No asignado'}</span>
+          {/* Mobile-only beach illustration */}
+          <div className="sv-hero-illustration" aria-hidden="true">🏖️</div>
+
+          <div className="sv-hero-kpis">
+            <div className="sv-kpi sv-kpi--green">
+              <div className="sv-kpi-row-top">
+                <span className="sv-kpi-icon" style={{ background: '#E8F5E9' }}>📅</span>
+                <span className="sv-kpi-label">Días disponibles</span>
+              </div>
+              <span className="sv-kpi-value">{user.vacationBalance} días</span>
+            </div>
+            <div className="sv-kpi sv-kpi--orange">
+              <div className="sv-kpi-row-top">
+                <span className="sv-kpi-icon" style={{ background: '#FFF3E0' }}>⏰</span>
+                <span className="sv-kpi-label">Por vencer este año</span>
+              </div>
+              <span className="sv-kpi-value">{user.vacationBalancePendientes} días</span>
+              <span className="sv-kpi-sub">Vence el 31/12/{currentYear}</span>
+            </div>
+            <div className="sv-kpi sv-kpi--amber">
+              <div className="sv-kpi-row-top">
+                <span className="sv-kpi-icon" style={{ background: '#FFF8E1' }}>⏳</span>
+                <span className="sv-kpi-label">Pendientes de aprobación</span>
+              </div>
+              <span className="sv-kpi-value">{pendingDays} días</span>
             </div>
           </div>
         </div>
 
-        
-      </div>
-      <div className="wz-request-hero-cards">
-        <div className="wz-metric-card available">
-          <div className="wz-metric-card-head">
-            <span
-              className="wz-metric-card-icon"
-              style={{
-                fontSize: '26px',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center'
-              }}
-            >
-              🌴
-            </span>
-            <span>Días disponibles</span>
-          </div>
-          <strong>{user.vacationBalance} días</strong>
-          <p>Listos para ti</p>
-        </div>
-        <div className="wz-metric-card expiring">
-          <div className="wz-metric-card-head">
-            <span
-              className="wz-metric-card-icon"
-              style={{
-                fontSize: '26px',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center'
-              }}
-            >
-              ⏳
-            </span>
-            <span>Por vencer al 31/12/2026</span>
-          </div>
-          <strong>{user.vacationBalancePendientes} días</strong>
-          <p>Úsalos antes de esa fecha</p>
-        </div>
-        <div className="wz-metric-card pending">
-          <div className="wz-metric-card-head">
-            <span
-              className="wz-metric-card-icon"
-              style={{
-                fontSize: '26px',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center'
-              }}
-            >
-              🕒
-            </span>
-            <span>Pendiente de aprobación</span>
-          </div>
-          <strong>{pendingApprovalDays} días</strong>
-          <p>En revisión</p>
-        </div>
-        <div className="wz-metric-card scheduled">
-          <div className="wz-metric-card-head">
-            <span
-              className="wz-metric-card-icon"
-              style={{
-                fontSize: '26px',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center'
-              }}
-            >
-              📅
-            </span>
-            <span>Ya programados</span>
-          </div>
-          <strong>{scheduledDays} días</strong>
-          <p>Este año</p>
-        </div>
-      </div>
-      <div className="wz-request-layout">
-        <Ui5Card title="¿Cuándo te gustaría tomar tu descanso?" className="wz-request-form-card">
-          
+        {/* ── Main two-column grid ────────────────────────────────── */}
+        <div className="sv-main-grid">
 
-          {error && (
-            <div className="wz-alert wz-alert-error" style={{ marginBottom: 16 }}>
-              ⚠ {error}
-            </div>
-          )}
-
-          <div className="wz-request-calendar-panel">
-            <div className="wz-request-calendar-header">
-              
-              <div className="wz-calendar-nav">
-                <button
-                  type="button"
-                  className="wz-calendar-nav-btn"
-                  onClick={() => {
-                    if (calendarMonth === 0) {
-                      setCalendarMonth(11);
-                      setCalendarYear((prev) => prev - 1);
-                    } else {
-                      setCalendarMonth((prev) => prev - 1);
-                    }
-                  }}
-                >
-                  ‹
-                </button>
-                <span>{SPANISH_MONTHS[calendarMonth]} {calendarYear}</span>
-                <button
-                  type="button"
-                  className="wz-calendar-nav-btn"
-                  onClick={() => {
-                    if (calendarMonth === 11) {
-                      setCalendarMonth(0);
-                      setCalendarYear((prev) => prev + 1);
-                    } else {
-                      setCalendarMonth((prev) => prev + 1);
-                    }
-                  }}
-                >
-                  ›
-                </button>
+          {/* ── LEFT: Calendar card ────────────────────────────────── */}
+          <div className="sv-cal-card">
+            <div className="sv-cal-card-header">
+              <div className="sv-cal-card-title-row">
+                <span className="sv-cal-card-icon" aria-hidden="true">
+                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="2" y="5" width="24" height="21" rx="4" fill="#fff" stroke="#DA291C" strokeWidth="2"/>
+                    <rect x="2" y="5" width="24" height="8" rx="4" fill="#DA291C"/>
+                    <rect x="8" y="1" width="3" height="7" rx="1.5" fill="#DA291C"/>
+                    <rect x="17" y="1" width="3" height="7" rx="1.5" fill="#DA291C"/>
+                    <rect x="7" y="17" width="3" height="3" rx="1" fill="#DA291C"/>
+                    <rect x="12.5" y="17" width="3" height="3" rx="1" fill="#DA291C"/>
+                    <rect x="18" y="17" width="3" height="3" rx="1" fill="#DA291C"/>
+                    <rect x="7" y="22" width="3" height="2" rx="1" fill="#DA291C" opacity="0.5"/>
+                    <rect x="12.5" y="22" width="3" height="2" rx="1" fill="#DA291C" opacity="0.5"/>
+                  </svg>
+                </span>
+                <div>
+                  <h3 className="sv-cal-card-title">¿Cuándo quieres tomar tu descanso?</h3>
+                  <p className="sv-cal-card-sub">Selecciona las fechas de inicio y fin.</p>
+                </div>
               </div>
             </div>
 
-            <div className="wz-calendar-grid">
-              {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((weekday) => (
-                <div key={weekday} className="wz-calendar-weekday">{weekday}</div>
-              ))}
-              {getCalendarDays(calendarYear, calendarMonth).map((cell) => {
-                const cellDate = cell.date.toISOString().split('T')[0];
-                const selectedStart = startDate ? new Date(startDate + 'T00:00:00') : null;
-                const selectedEnd = endDate ? new Date(endDate + 'T00:00:00') : null;
-                const isStart = selectedStart?.toISOString().split('T')[0] === cellDate;
-                const isEnd = selectedEnd?.toISOString().split('T')[0] === cellDate;
-                const inRange = selectedStart && selectedEnd
-                  ? cell.date > selectedStart && cell.date < selectedEnd
-                  : false;
-                const isDisabled = !cell.currentMonth;
-                const isWeekend = cell.date.getDay() === 0 || cell.date.getDay() === 6;
+            {error && <div className="sv-error-bar">⚠ {error}</div>}
 
-                return (
+            <div className="sv-cal-inner">
+              {/* Calendar column */}
+              <div className="sv-cal-col">
+                <div className="sv-month-nav">
                   <button
-                    key={cellDate}
                     type="button"
-                    className={`wz-calendar-cell${isDisabled ? ' disabled' : ''}${isWeekend ? ' weekend' : ''}${isStart ? ' start' : ''}${isEnd ? ' end' : ''}${inRange ? ' in-range' : ''}`}
+                    className="sv-month-btn"
                     onClick={() => {
-                      if (isDisabled) return;
-                      if (!startDate || (startDate && endDate)) {
-                        setStartDate(cellDate);
-                        setEndDate('');
-                      } else if (cellDate < startDate) {
-                        setStartDate(cellDate);
-                        setEndDate('');
-                      } else {
-                        setEndDate(cellDate);
-                      }
+                      if (calendarMonth === 0) { setCalendarMonth(11); setCalendarYear((y) => y - 1); }
+                      else setCalendarMonth((m) => m - 1);
                     }}
-                  >
-                    {cell.date.getDate()}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="wz-calendar-legend">
-              <span><strong>Inicio</strong></span>
-              <span><strong>Fin</strong></span>
-              <span><strong>Días seleccionados</strong></span>
-              <span><strong>No laborables</strong></span>
-            </div>
-          </div>
-
-          <div className="wz-request-summary-panel">
-            <div className="wz-request-summary-item">
-              <span>Inicio</span>
-              <strong>{startDate || '—'}</strong>
-            </div>
-            <div className="wz-request-summary-item">
-              <span>Fin</span>
-              <strong>{endDate || '—'}</strong>
-            </div>
-            <div className="wz-request-summary-item">
-              <span>Días laborables</span>
-              <strong>{days > 0 ? `${days}` : '—'}</strong>
-            </div>
-            <div className="wz-request-summary-item">
-              <span>Vuelves</span>
-              <strong>{returnDate || '—'}</strong>
-            </div>
-          </div>
-        </Ui5Card>
-
-        <Ui5Card title="Detalles de tu solicitud" className="wz-request-side-card">
-          <div className="wz-request-card-header">
-            
-          </div>
-
-          <div className="wz-request-detail-panel">
-            <div className="wz-request-detail-item">
-              <span className="wz-request-detail-label">Tipo de vacaciones</span>
-              <span className="wz-request-detail-value">Vacaciones con días laborables</span>
-            </div>
-            <div className="wz-request-detail-item">
-              <span className="wz-request-detail-label">Jornada laboral</span>
-              <span className="wz-request-detail-value">Lunes a Viernes · 08:00 a 17:00</span>
-            </div>
-            <div className="wz-request-detail-item">
-              <span className="wz-request-detail-label">Retorno estimado</span>
-              <span className="wz-request-detail-value">{returnDate ? `Volverás el ${returnDate}` : 'Pendiente'}</span>
-            </div>
-          </div>
-
-          <div className="wz-request-approver-card">
-            <span className="wz-request-detail-label">Tu aprobador</span>
-            <div className="wz-request-approver-row">
-              <div className="wz-request-approver-avatar">{user.initials}</div>
-              <div className="wz-request-approver-info">
-                <strong>{user.approver ?? 'Jefe directo'}</strong>
-                <span>Jefe Aprobador</span>
-              </div>
-            </div>
-            <div className="wz-request-approver-status">
-              {isRotativo
-                ? 'Esta solicitud pasará por Jefe Aprobador y Administración GH.'
-                : 'Esta solicitud será revisada por tu Jefe Aprobador.'}
-            </div>
-          </div>
-
-          <div className="wz-request-advice-card">
-            <strong>Recomendación</strong>
-            <p>Procura que las fechas seleccionadas no afecten la operación de tu equipo.</p>
-          </div>
-        </Ui5Card>
-        <div className="wz-request-additional-section">
-            <div className="wz-request-additional-title">
-              <h3>¿Necesitas algo adicional?</h3>
-              <span>(Opcional)</span>
-            </div>
-
-            <div className="wz-request-additional-grid">
-              <div className="wz-request-additional-switches">
-                <div className="wz-request-extra-item">
-                  <div>
-                    <strong>¿Te gustaría salir antes?</strong>
-                    <p>Puedes pedir un adelanto de vacaciones.</p>
-                  </div>
+                  >‹</button>
+                  <span className="sv-month-label">
+                    {SPANISH_MONTHS[calendarMonth]} {calendarYear}
+                  </span>
                   <button
                     type="button"
-                    className="wz-toggle"
-                    onClick={() => setAdvanceRequest((prev) => !prev)}
-                    aria-pressed={advanceRequest}
-                  >
-                    <span className={`wz-toggle-track ${advanceRequest ? 'on' : ''}`}>
-                      <span className="wz-toggle-thumb" />
-                    </span>
-                    <span className="wz-toggle-label">{advanceRequest ? 'Sí' : 'No'}</span>
-                  </button>
+                    className="sv-month-btn"
+                    onClick={() => {
+                      if (calendarMonth === 11) { setCalendarMonth(0); setCalendarYear((y) => y + 1); }
+                      else setCalendarMonth((m) => m + 1);
+                    }}
+                  >›</button>
                 </div>
-                <div className="wz-request-extra-item">
-                  <div>
-                    <strong>¿Necesitas más días?</strong>
-                    <p>Puedes solicitar un préstamo de vacaciones.</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="wz-toggle"
-                    onClick={() => setLoanRequest((prev) => !prev)}
-                    aria-pressed={loanRequest}
-                  >
-                    <span className={`wz-toggle-track ${loanRequest ? 'on' : ''}`}>
-                      <span className="wz-toggle-thumb" />
-                    </span>
-                    <span className="wz-toggle-label">{loanRequest ? 'Sí' : 'No'}</span>
-                  </button>
+
+                <div className="sv-grid">
+                  {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => (
+                    <div key={i} className="sv-weekday">{d}</div>
+                  ))}
+                  {calendarCells.map((cell) => {
+                    const cd = cell.date.toISOString().split('T')[0];
+                    const selStart = startDate ? new Date(startDate + 'T00:00:00') : null;
+                    const selEnd   = endDate   ? new Date(endDate   + 'T00:00:00') : null;
+                    const isStart  = selStart?.toISOString().split('T')[0] === cd;
+                    const isEnd    = selEnd?.toISOString().split('T')[0] === cd;
+                    const inRange  = selStart && selEnd
+                      ? cell.date > selStart && cell.date < selEnd
+                      : false;
+                    const isDisabled = !cell.currentMonth;
+                    const isWeekend  = cell.date.getDay() === 0 || cell.date.getDay() === 6;
+
+                    return (
+                      <button
+                        key={cd}
+                        type="button"
+                        className={[
+                          'sv-cell',
+                          isDisabled ? 'sv-cell--off'     : '',
+                          isWeekend  ? 'sv-cell--weekend' : '',
+                          isStart    ? 'sv-cell--start'   : '',
+                          isEnd      ? 'sv-cell--end'     : '',
+                          inRange    ? 'sv-cell--range'   : '',
+                        ].filter(Boolean).join(' ')}
+                        onClick={() => {
+                          if (isDisabled) return;
+                          if (!startDate || (startDate && endDate)) {
+                            setStartDate(cd);
+                            setEndDate('');
+                          } else if (cd < startDate) {
+                            setStartDate(cd);
+                            setEndDate('');
+                          } else {
+                            setEndDate(cd);
+                          }
+                          setError('');
+                        }}
+                      >
+                        {cell.date.getDate()}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="sv-legend">
+                  <span className="sv-legend-item">
+                    <i className="sv-dot sv-dot--start" /> Inicio
+                  </span>
+                  <span className="sv-legend-item">
+                    <i className="sv-dot sv-dot--end" /> Fin
+                  </span>
+                  <span className="sv-legend-item">
+                    <i className="sv-dot sv-dot--range" /> Días seleccionados
+                  </span>
+                  <span className="sv-legend-item">
+                    <i className="sv-dot sv-dot--weekend" /> No laborables
+                  </span>
                 </div>
               </div>
 
-              <div className="wz-request-additional-comment">
-                <label className="wz-request-label">Comentario (Opcional)</label>
-                <textarea
-                  className="wz-textarea"
-                  placeholder="Agrega un comentario para tu aprobador..."
-                  value={comments}
-                  onChange={(e) => setComments(e.target.value)}
-                  rows={5}
-                />
-                <div className="wz-form-actions" style={{ marginTop: 18 }}>
-                  <button
-                    className="wz-btn wz-btn-primary"
-                    onClick={handleSubmit}
-                    disabled={!startDate || !endDate}
-                  >
-                    Enviar solicitud
-                  </button>
-                  <button className="wz-btn wz-btn-outline" onClick={handleReset}>
-                    Cancelar
-                  </button>
-                </div>
+              {/* Tu selección panel */}
+              <div className="sv-sel-col">
+                {!hasSelection ? (
+                  <div className="sv-sel-empty">
+                    <img
+                      src="/beach-umbrella.png"
+                      alt="Selecciona tus fechas de vacaciones"
+                      className="sv-sel-empty-img"
+                    />
+                    <p className="sv-sel-empty-text">Selecciona las fechas en el calendario</p>
+                  </div>
+                ) : (
+                  <div className="sv-sel-panel">
+                    <div className="sv-sel-illustration">🌴</div>
+                    <div className="sv-sel-title">Tu selección</div>
+
+                    <div className="sv-sel-item">
+                      <span className="sv-sel-item-icon" style={{ background: '#FFEBEE' }}>📅</span>
+                      <div className="sv-sel-item-body">
+                        <span className="sv-sel-item-label">Inicio</span>
+                        <span className="sv-sel-item-value">{fmtDate(startDate)}</span>
+                      </div>
+                    </div>
+
+                    <div className="sv-sel-item">
+                      <span className="sv-sel-item-icon" style={{ background: '#FFEBEE' }}>📅</span>
+                      <div className="sv-sel-item-body">
+                        <span className="sv-sel-item-label">Fin</span>
+                        <span className="sv-sel-item-value">{endDate ? fmtDate(endDate) : '—'}</span>
+                      </div>
+                    </div>
+
+                    {hasRange && (
+                      <>
+                        <div className="sv-sel-item">
+                          <span className="sv-sel-item-icon" style={{ background: '#E8F5E9' }}>📊</span>
+                          <div className="sv-sel-item-body">
+                            <span className="sv-sel-item-label">Días laborables</span>
+                            <span className="sv-sel-item-value">{days} días</span>
+                          </div>
+                        </div>
+
+                        <div className="sv-sel-item">
+                          <span className="sv-sel-item-icon" style={{ background: '#E3F2FD' }}>✈️</span>
+                          <div className="sv-sel-item-body">
+                            <span className="sv-sel-item-label">Retorno al trabajo</span>
+                            <span className="sv-sel-item-value">{fmtDate(returnDate)}</span>
+                          </div>
+                        </div>
+
+                        <p className="sv-sel-note">Se cuentan solo tus días de trabajo</p>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
+
+          {/* ── RIGHT: Details + Options card ──────────────────────── */}
+          <div className="sv-right-card">
+            {/*
+             * Tipo + Horario: siempre visible en desktop.
+             * En mobile: se muestra una fila resumen colapsable;
+             * al abrirla aparecen las dos filas de detalle.
+             */}
+            <div className="sv-details-section">
+              {/* Fila resumen solo visible en mobile */}
+              <button
+                className="sv-details-toggle"
+                onClick={() => setDetailsOpen((v) => !v)}
+                aria-expanded={detailsOpen}
+              >
+                <span className="sv-detail-icon" style={{ background: '#EFF6FF' }}>📋</span>
+                <div className="sv-detail-text">
+                  <span className="sv-detail-label">Detalles de la solicitud</span>
+                  <span className="sv-detail-value">Vacaciones · Lun–Vie 08:00–17:00</span>
+                </div>
+                <span className={`sv-details-chevron${detailsOpen ? ' sv-details-chevron--open' : ''}`}>
+                  ›
+                </span>
+              </button>
+
+              {/* Filas de detalle: siempre visibles en desktop, desplegables en mobile */}
+              <div className={`sv-details-body${detailsOpen ? ' sv-details-body--open' : ''}`}>
+                {/* Tipo de vacaciones */}
+                <div className="sv-detail-row">
+                  <span className="sv-detail-icon" style={{ background: '#E3F2FD' }}>🏖️</span>
+                  <div className="sv-detail-text">
+                    <span className="sv-detail-label">Tipo de vacaciones</span>
+                    <span className="sv-detail-value">Vacaciones (días laborables)</span>
+                  </div>
+                  <span className="sv-detail-chevron">›</span>
+                </div>
+
+                {/* Horario laboral */}
+                <div className="sv-detail-row">
+                  <span className="sv-detail-icon" style={{ background: '#F3E5F5' }}>⏰</span>
+                  <div className="sv-detail-text">
+                    <span className="sv-detail-label">Horario laboral</span>
+                    <span className="sv-detail-value">Lunes a Viernes · 08:00 a 17:00</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Options */}
+            <div className="sv-opts">
+              <div className="sv-opts-title">
+                ¿Necesitas algo adicional?
+                <span className="sv-opts-badge">(Opcional)</span>
+              </div>
+
+              <div className="sv-toggle-row">
+                <span className="sv-toggle-icon" style={{ background: '#EDE7F6' }}>✈️</span>
+                <div className="sv-toggle-text">
+                  <strong>Adelanto de vacaciones</strong>
+                  <span>Pedir días por adelantado</span>
+                </div>
+                <button
+                  type="button"
+                  className="wz-toggle"
+                  onClick={() => setAdvanceRequest((v) => !v)}
+                  aria-pressed={advanceRequest}
+                >
+                  <span className={`wz-toggle-track${advanceRequest ? ' on' : ''}`}>
+                    <span className="wz-toggle-thumb" />
+                  </span>
+                </button>
+              </div>
+
+              <div className="sv-toggle-row">
+                <span className="sv-toggle-icon" style={{ background: '#E8F5E9' }}>💰</span>
+                <div className="sv-toggle-text">
+                  <strong>Préstamo de vacaciones</strong>
+                  <span>Pedir días adicionales</span>
+                </div>
+                <button
+                  type="button"
+                  className="wz-toggle"
+                  onClick={() => setLoanRequest((v) => !v)}
+                  aria-pressed={loanRequest}
+                >
+                  <span className={`wz-toggle-track${loanRequest ? ' on' : ''}`}>
+                    <span className="wz-toggle-thumb" />
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Comment */}
+            <div className="sv-comment">
+              <label className="sv-comment-label">
+                Comentario{' '}
+                <span className="sv-comment-optional">(opcional)</span>
+              </label>
+              <textarea
+                className="sv-comment-area"
+                placeholder="Escribe un comentario si lo deseas..."
+                value={comments}
+                onChange={(e) => setComments(e.target.value)}
+                maxLength={250}
+                rows={4}
+              />
+              <div className="sv-comment-count">{comments.length}/250</div>
+            </div>
+
+            {/* Mobile-only submit button */}
+            <div className="sv-mobile-submit">
+              <button
+                className="sv-submit-btn"
+                onClick={handleSubmitClick}
+                disabled={!startDate || !endDate}
+              >
+                Enviar solicitud <span className="sv-submit-icon">✈</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-    </SpacePage>
+
+      {/* ── Desktop bottom action bar ────────────────────────────── */}
+      <div className="sv-bottom-bar">
+        <div className="sv-bottom-info">
+          <span className="sv-bottom-info-icon">ℹ️</span>
+          <span>
+            Tu solicitud será enviada a{' '}
+            <strong>
+              {isRotativo ? 'tu jefe directo y Administración GH' : 'tu jefe directo'}
+            </strong>
+            {' '}para aprobación. Te notificaremos por correo y en el centro de tareas.
+          </span>
+        </div>
+        <button
+          className="sv-submit-btn"
+          onClick={handleSubmitClick}
+          disabled={!startDate || !endDate}
+        >
+          Enviar solicitud <span className="sv-submit-icon">✈</span>
+        </button>
+      </div>
+
+      {/* ── Confirmation modal ───────────────────────────────────── */}
+      {showConfirm && (
+        <div className="wz-overlay" onClick={() => setShowConfirm(false)}>
+          <div className="wz-modal sv-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="wz-modal-header sv-modal-header">
+              <div>
+                <div className="wz-modal-title">Revisa tu solicitud</div>
+                <div className="sv-modal-subtitle">
+                  Confirma los detalles antes de enviar.
+                </div>
+              </div>
+              <button className="wz-modal-close" onClick={() => setShowConfirm(false)}>✕</button>
+            </div>
+
+            <div className="wz-modal-body">
+              <div className="sv-confirm-grid">
+                {/* Left column */}
+                <div className="sv-confirm-col">
+                  <div className="sv-confirm-item">
+                    <span className="sv-confirm-item-label">
+                      <span className="sv-ci-icon">👤</span> Colaborador
+                    </span>
+                    <span className="sv-confirm-item-value">{user.name}</span>
+                  </div>
+                  <div className="sv-confirm-item">
+                    <span className="sv-confirm-item-label">
+                      <span className="sv-ci-icon">🏢</span> Área
+                    </span>
+                    <span className="sv-confirm-item-value">{user.department}</span>
+                  </div>
+                  <div className="sv-confirm-item">
+                    <span className="sv-confirm-item-label">
+                      <span className="sv-ci-icon">🏖️</span> Tipo de vacaciones
+                    </span>
+                    <span className="sv-confirm-item-value">Vacaciones (días laborables)</span>
+                  </div>
+                  <div className="sv-confirm-item">
+                    <span className="sv-confirm-item-label">
+                      <span className="sv-ci-icon">⏰</span> Horario laboral
+                    </span>
+                    <span className="sv-confirm-item-value">Lunes a Viernes · 08:00 a 17:00</span>
+                  </div>
+                </div>
+
+                {/* Right column */}
+                <div className="sv-confirm-col">
+                  <div className="sv-confirm-item">
+                    <span className="sv-confirm-item-label">
+                      <span className="sv-ci-icon">📅</span> Inicio
+                    </span>
+                    <span className="sv-confirm-item-value">{fmtDate(startDate)}</span>
+                  </div>
+                  <div className="sv-confirm-item">
+                    <span className="sv-confirm-item-label">
+                      <span className="sv-ci-icon">📅</span> Fin
+                    </span>
+                    <span className="sv-confirm-item-value">{fmtDate(endDate)}</span>
+                  </div>
+                  <div className="sv-confirm-item">
+                    <span className="sv-confirm-item-label">
+                      <span className="sv-ci-icon">📊</span> Días laborables
+                    </span>
+                    <span className="sv-confirm-item-value sv-confirm-item-value--accent">
+                      {days} días
+                    </span>
+                  </div>
+                  <div className="sv-confirm-item">
+                    <span className="sv-confirm-item-label">
+                      <span className="sv-ci-icon">↩️</span> Retorno al trabajo
+                    </span>
+                    <span className="sv-confirm-item-value">{fmtDate(returnDate)}</span>
+                  </div>
+                  <div className="sv-confirm-item">
+                    <span className="sv-confirm-item-label">
+                      <span className="sv-ci-icon">💬</span> Comentario
+                    </span>
+                    <span className="sv-confirm-item-value sv-confirm-item-value--muted">
+                      {comments.trim() || 'Sin comentarios'}
+                    </span>
+                  </div>
+
+                  {/* Approver card */}
+                  <div className="sv-approver-card">
+                    <div className="sv-approver-header">Aprobador</div>
+                    <div className="sv-approver-row">
+                      <div className="sv-approver-avatar">{approverInitials}</div>
+                      <div>
+                        <div className="sv-approver-name">{user.approver ?? 'Jefe Directo'}</div>
+                        <div className="sv-approver-role">Jefe Directo</div>
+                      </div>
+                    </div>
+                    <div className="sv-approver-note">
+                      <span>✅</span>
+                      <span>
+                        Tu solicitud será enviada a tu jefe directo para aprobación.
+                        Te notificaremos por correo y en el centro de tareas.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="wz-modal-footer">
+              <button className="wz-btn wz-btn-outline" onClick={() => setShowConfirm(false)}>
+                Cancelar
+              </button>
+              <button className="wz-btn wz-btn-primary sv-confirm-btn" onClick={handleConfirm}>
+                Confirmar solicitud ✈
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Mobile bottom navigation ─────────────────────────────── */}
+      <nav className="sv-mobile-nav" aria-label="Navegación principal">
+        <div className="sv-mobile-nav-inner-wrap">
+          <button className="sv-nav-item" onClick={() => onNavigate('inicio')}>
+            <span className="sv-nav-icon">🏠</span>
+            <span className="sv-nav-label">Inicio</span>
+          </button>
+          <button className="sv-nav-item" onClick={() => onNavigate('mis-solicitudes')}>
+            <span className="sv-nav-icon">📋</span>
+            <span className="sv-nav-label">Solicitudes</span>
+          </button>
+          <button className="sv-nav-item sv-nav-item--fab">
+            <span className="sv-nav-fab">+</span>
+            <span className="sv-nav-label sv-nav-label--active">Vacaciones</span>
+          </button>
+          {(user.role === 'jefe_aprobador' || user.role === 'administrador_gh') && (
+            <button
+              className="sv-nav-item"
+              onClick={() => onNavigate('solicitudes-pendientes', 'aprobaciones')}
+            >
+              <span className="sv-nav-icon">✅</span>
+              <span className="sv-nav-label">Aprobac.</span>
+            </button>
+          )}
+          <button className="sv-nav-item">
+            <span className="sv-nav-icon">👤</span>
+            <span className="sv-nav-label">Perfil</span>
+          </button>
+        </div>
+      </nav>
+    </>
   );
 };
 

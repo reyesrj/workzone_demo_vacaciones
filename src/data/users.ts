@@ -27,6 +27,7 @@ export interface User {
   vacationBalanceVencidas: number;   // 2+ años
   initials: string;
   managerId?: string;
+  photo?: string;
 }
 
 export const USERS: User[] = [
@@ -46,6 +47,7 @@ export const USERS: User[] = [
     vacationBalanceVencidas: 2,
     initials: 'AG',
     managerId: 'u3',
+    photo: '/avatars/u1.jpg',
   },
   {
     id: 'u2',
@@ -63,6 +65,7 @@ export const USERS: User[] = [
     vacationBalanceVencidas: 2,
     initials: 'CR',
     managerId: 'u3',
+    photo: '/avatars/u2.jpg',
   },
   {
     id: 'u3',
@@ -78,6 +81,7 @@ export const USERS: User[] = [
     vacationBalancePendientes: 5,
     vacationBalanceVencidas: 3,
     initials: 'ML',
+    photo: '/avatars/u3.jpg',
   },
   {
     id: 'u4',
@@ -93,6 +97,7 @@ export const USERS: User[] = [
     vacationBalancePendientes: 5,
     vacationBalanceVencidas: 3,
     initials: 'RS',
+    photo: '/avatars/u4.jpg',
   },
   {
     id: 'u5',
@@ -110,6 +115,7 @@ export const USERS: User[] = [
     vacationBalanceVencidas: 2,
     initials: 'LM',
     managerId: 'u3',
+    photo: '/avatars/u5.jpg',
   },
   {
     id: 'u6',
@@ -127,6 +133,7 @@ export const USERS: User[] = [
     vacationBalanceVencidas: 1,
     initials: 'DT',
     managerId: 'u3',
+    photo: '/avatars/u6.jpg',
   },
 ];
 

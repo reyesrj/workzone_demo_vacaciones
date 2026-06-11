@@ -1,0 +1,22 @@
+Always use SAPUI5 1.120 controls.
+
+Allowed libraries:
+- sap.m
+- sap.f
+- sap.uxap
+- sap.ui.layout
+- sap.ui.core
+
+Do not invent controls.
+
+Prefer:
+- ObjectPageLayout
+- DynamicPage
+- FlexibleColumnLayout
+- sap.m.Table
+
+Avoid:
+- Deprecated controls
+- Custom CSS if a UI5 control exists
+
+All generated code must be compatible with SAP BTP Work Zone Standard.
