@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ROLE_LABELS } from '../data/users';
+import React, { useState, useRef, useCallback } from 'react';
+import { USERS, ROLE_LABELS } from '../data/users';
 import type { User } from '../data/users';
 import { INITIAL_REQUESTS } from '../data/vacationRequests';
 import type { VacationRequest, RequestStatus } from '../data/vacationRequests';
@@ -8,6 +8,9 @@ import type { NavigateFn } from '../types';
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
 /* ------------------------------------------------------------------ */
+
+/** "1 día hábil" / "N días hábiles" */
+const dayLabel = (n: number) => n === 1 ? '1 día hábil' : `${n} días hábiles`;
 
 const countWorkingDays = (start: string, end: string): number => {
   if (!start || !end) return 0;
@@ -96,6 +99,21 @@ const SolicitudVacaciones: React.FC<Props> = ({ user, onAddRequest, onNavigate }
   const [loanRequest, setLoanRequest]   = useState(false);
   const [showConfirm, setShowConfirm]   = useState(false);
   const [detailsOpen, setDetailsOpen]   = useState(false);
+  const [localPhoto, setLocalPhoto]     = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarPhotoChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result;
+      if (typeof result === 'string') setLocalPhoto(result);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';   // reset so the same file can be re-selected
+  }, []);
 
   const days        = countWorkingDays(startDate, endDate);
   const returnDate  = calcReturnDate(endDate);
@@ -110,6 +128,9 @@ const SolicitudVacaciones: React.FC<Props> = ({ user, onAddRequest, onNavigate }
 
   const approverInitials = (user.approver ?? 'JA')
     .split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  const approverUser  = user.managerId ? USERS.find((u) => u.id === user.managerId) : null;
+  const approverPhoto = approverUser?.photo;
+  const approverName  = user.approver ?? 'tu jefe directo';
 
   const validate = (): string => {
     if (!startDate) return 'Selecciona una fecha de inicio.';
@@ -191,24 +212,17 @@ const SolicitudVacaciones: React.FC<Props> = ({ user, onAddRequest, onNavigate }
           <div className="sv-success-emoji">🎉</div>
           <h3 className="sv-success-title">¡Solicitud enviada!</h3>
           <p className="sv-success-body">
-            Tu solicitud de <strong>{days} días hábiles</strong> ({fmtDate(startDate)} → {fmtDate(endDate)})
-            fue enviada correctamente{' '}
-            {isRotativo
-              ? 'al Jefe Aprobador y Administración GH.'
-              : 'al Jefe Aprobador.'}
+            Tu solicitud de <strong>{dayLabel(days)}</strong> ({fmtDate(startDate)} → {fmtDate(endDate)})
+            fue registrada correctamente.
           </p>
-          <div className="sv-success-flow">
-            <span className="sv-success-step sv-success-step--done">✓ Enviada</span>
-            <span className="sv-success-arrow">→</span>
-            <span className="sv-success-step">Jefe Aprobador</span>
-            {isRotativo && (
-              <>
-                <span className="sv-success-arrow">→</span>
-                <span className="sv-success-step">Admin GH</span>
-              </>
-            )}
-            <span className="sv-success-arrow">→</span>
-            <span className="sv-success-step">Aprobado</span>
+          <div className="sv-success-notify">
+            <span className="sv-success-notify-icon" aria-hidden="true">🔔</span>
+            <span>
+              Te notificaremos cuando{' '}
+              <strong>{approverName}</strong>{' '}
+              {isRotativo ? 'y Administración GH aprueben' : 'apruebe'}{' '}
+              la solicitud.
+            </span>
           </div>
           <div className="sv-success-actions">
             <button className="wz-btn wz-btn-outline" onClick={handleReset}>
@@ -240,31 +254,54 @@ const SolicitudVacaciones: React.FC<Props> = ({ user, onAddRequest, onNavigate }
         {/* ── User hero ──────────────────────────────────────────── */}
         <div className="sv-hero">
           <div className="sv-hero-profile">
-            <div
-              className="sv-hero-avatar"
-              style={user.photo ? { background: 'transparent', padding: 0, overflow: 'hidden' } : {}}
-            >
-              {user.photo
-                ? <img src={`${import.meta.env.BASE_URL}${user.photo}`} alt={user.name} className="sv-avatar-img" />
-                : user.initials}
+            {/* Avatar with upload button */}
+            <div className="sv-hero-avatar-wrap">
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleAvatarPhotoChange}
+              />
+              <div
+                className="sv-hero-avatar"
+                style={(localPhoto || user.photo) ? { background: 'transparent', padding: 0, overflow: 'hidden' } : {}}
+              >
+                {localPhoto
+                  ? <img src={localPhoto} alt={user.name} className="sv-avatar-img" />
+                  : user.photo
+                    ? <img src={`${import.meta.env.BASE_URL}${user.photo}`} alt={user.name} className="sv-avatar-img" />
+                    : user.initials}
+              </div>
+              <button
+                className="sv-hero-avatar-btn"
+                title="Actualizar foto de perfil"
+                aria-label="Actualizar foto de perfil"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
+                  <path d="M5 2.5h4l1.5 1.5H12a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h1.5L5 2.5Z" stroke="white" strokeWidth="1.2" strokeLinejoin="round"/>
+                  <circle cx="7" cy="7.5" r="1.8" stroke="white" strokeWidth="1.2"/>
+                </svg>
+              </button>
             </div>
+
             <div className="sv-hero-info">
               <div className="sv-hero-name">Hola, {firstName} 👋</div>
-              {/* Desktop: muestra área/departamento */}
+              {/* Desktop: departamento */}
               <div className="sv-hero-dept">{user.department}</div>
-              {/* Mobile: muestra días disponibles en lugar del área */}
+              {/* Texto amigable — en mobile aparece ENCIMA del balance via CSS order */}
+              <p className="sv-hero-hint">
+                ¿Cuántos días tengo disponibles?
+              </p>
+              {/* Mobile: balance de días */}
               <div className="sv-hero-mobile-balance">
                 Tienes <strong>{user.vacationBalance} días</strong> disponibles
               </div>
-              <button
-                className="sv-hero-link"
-                onClick={() => onNavigate('mis-solicitudes')}
-              >
-                ℹ️ ¿Cuántos días tengo disponibles? ›
-              </button>
             </div>
           </div>
-          {/* Mobile-only beach illustration */}
+          {/* Beach illustration (hidden — replaced by CSS bg image) */}
           <div className="sv-hero-illustration" aria-hidden="true">🏖️</div>
 
           <div className="sv-hero-kpis">
@@ -487,7 +524,7 @@ const SolicitudVacaciones: React.FC<Props> = ({ user, onAddRequest, onNavigate }
                 <span className="sv-detail-icon" style={{ background: '#EFF6FF' }}>📋</span>
                 <div className="sv-detail-text">
                   <span className="sv-detail-label">Detalles de la solicitud</span>
-                  <span className="sv-detail-value">Vacaciones · Lun–Vie 08:00–17:00</span>
+                  
                 </div>
                 <span className={`sv-details-chevron${detailsOpen ? ' sv-details-chevron--open' : ''}`}>
                   ›
@@ -595,13 +632,21 @@ const SolicitudVacaciones: React.FC<Props> = ({ user, onAddRequest, onNavigate }
       {/* ── Desktop bottom action bar ────────────────────────────── */}
       <div className="sv-bottom-bar">
         <div className="sv-bottom-info">
-          <span className="sv-bottom-info-icon">ℹ️</span>
-          <span>
+          <span className="sv-bottom-info-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <circle cx="9" cy="9" r="8" fill="#0070F2" opacity="0.15"/>
+              <circle cx="9" cy="9" r="8" stroke="#0070F2" strokeWidth="1.4"/>
+              <rect x="8.2" y="7.5" width="1.6" height="5.5" rx="0.8" fill="#0070F2"/>
+              <circle cx="9" cy="5.5" r="0.9" fill="#0070F2"/>
+            </svg>
+          </span>
+          <span className="sv-bottom-info-text">
             Tu solicitud será enviada a{' '}
-            <strong>
-              {isRotativo ? 'tu jefe directo y Administración GH' : 'tu jefe directo'}
+            <strong className="sv-bottom-info-name">
+              {isRotativo ? `${approverName} y Administración GH` : approverName}
             </strong>
-            {' '}para aprobación. Te notificaremos por correo y en el centro de tareas.
+            {' '}para aprobación.{' '}
+            <span className="sv-bottom-info-sub">Te notificaremos por correo y en el centro de tareas.</span>
           </span>
         </div>
         <button
@@ -609,7 +654,10 @@ const SolicitudVacaciones: React.FC<Props> = ({ user, onAddRequest, onNavigate }
           onClick={handleSubmitClick}
           disabled={!startDate || !endDate}
         >
-          Enviar solicitud <span className="sv-submit-icon">✈</span>
+          Enviar solicitud
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="sv-submit-icon-svg">
+            <path d="M2 8h10M9 4l4 4-4 4" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
         </button>
       </div>
 
@@ -617,102 +665,170 @@ const SolicitudVacaciones: React.FC<Props> = ({ user, onAddRequest, onNavigate }
       {showConfirm && (
         <div className="wz-overlay" onClick={() => setShowConfirm(false)}>
           <div className="wz-modal sv-modal" onClick={(e) => e.stopPropagation()}>
+
+            {/* ── Header ── */}
             <div className="wz-modal-header sv-modal-header">
-              <div>
-                <div className="wz-modal-title">Revisa tu solicitud</div>
-                <div className="sv-modal-subtitle">
-                  Confirma los detalles antes de enviar.
+              <div className="sv-modal-header-title-group">
+                <span className="sv-modal-header-icon" aria-hidden="true">
+                  {/* Beach umbrella + sun */}
+                  <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="32" cy="12" r="8" fill="#FFB300"/>
+                    <path d="M5 24 Q15 7 27 24 Z" fill="#DA291C"/>
+                    <line x1="16" y1="10" x2="16" y2="24" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5"/>
+                    <line x1="10.5" y1="16" x2="10.5" y2="24" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5"/>
+                    <line x1="21.5" y1="14" x2="21.5" y2="24" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5"/>
+                    <line x1="16" y1="24" x2="20" y2="39" stroke="#8D6E63" strokeWidth="2.5" strokeLinecap="round"/>
+                    <path d="M7 40 Q20 37 33 40" stroke="#F5A623" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </span>
+                <div>
+                  <div className="wz-modal-title">Revisa tu solicitud</div>
+                  <div className="sv-modal-subtitle">Confirma los detalles antes de enviar.</div>
                 </div>
               </div>
               <button className="wz-modal-close" onClick={() => setShowConfirm(false)}>✕</button>
             </div>
 
+            {/* ── Body: 3 columns ── */}
             <div className="wz-modal-body">
               <div className="sv-confirm-grid">
-                {/* Left column */}
+
+                {/* Col 1 – Employee info */}
                 <div className="sv-confirm-col">
-                  <div className="sv-confirm-item">
-                    <span className="sv-confirm-item-label">
-                      <span className="sv-ci-icon">👤</span> Colaborador
+                  {/* Colaborador */}
+                  <div className="sv-ci">
+                    <span className="sv-ci-ico sv-ci-ico--gray">
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="6" r="3" stroke="#5A6069" strokeWidth="1.4"/><path d="M2.5 17c0-3.59 2.91-6.5 6.5-6.5s6.5 2.91 6.5 6.5" stroke="#5A6069" strokeWidth="1.4" strokeLinecap="round"/></svg>
                     </span>
-                    <span className="sv-confirm-item-value">{user.name}</span>
+                    <div className="sv-ci-body">
+                      <span className="sv-ci-lbl">Colaborador</span>
+                      <span className="sv-ci-val">{user.name}</span>
+                    </div>
                   </div>
-                  <div className="sv-confirm-item">
-                    <span className="sv-confirm-item-label">
-                      <span className="sv-ci-icon">🏢</span> Área
+
+                  {/* Área */}
+                  <div className="sv-ci">
+                    <span className="sv-ci-ico sv-ci-ico--gray">
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="2" width="11" height="14" rx="1" stroke="#5A6069" strokeWidth="1.4"/><line x1="2" y1="6" x2="13" y2="6" stroke="#5A6069" strokeWidth="1"/><rect x="5" y="10" width="2.5" height="6" rx="0.5" fill="#5A6069" opacity="0.4"/><rect x="8.5" y="9" width="2" height="2" rx="0.5" fill="#5A6069" opacity="0.4"/><rect x="5" y="9" width="2" height="2" rx="0.5" fill="#5A6069" opacity="0.4"/></svg>
                     </span>
-                    <span className="sv-confirm-item-value">{user.department}</span>
+                    <div className="sv-ci-body">
+                      <span className="sv-ci-lbl">Área</span>
+                      <span className="sv-ci-val">{user.department}</span>
+                    </div>
                   </div>
-                  <div className="sv-confirm-item">
-                    <span className="sv-confirm-item-label">
-                      <span className="sv-ci-icon">🏖️</span> Tipo de vacaciones
+
+                  {/* Tipo de vacaciones */}
+                  <div className="sv-ci">
+                    <span className="sv-ci-ico sv-ci-ico--gray">
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 6h11M10 3.5l3.5 2.5L10 8.5" stroke="#5A6069" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/><path d="M15 12H4m4 2.5L4.5 12 8 9.5" stroke="#5A6069" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </span>
-                    <span className="sv-confirm-item-value">Vacaciones (días laborables)</span>
+                    <div className="sv-ci-body">
+                      <span className="sv-ci-lbl">Tipo de vacaciones</span>
+                      <span className="sv-ci-val">Vacaciones (días laborables)</span>
+                    </div>
                   </div>
-                  <div className="sv-confirm-item">
-                    <span className="sv-confirm-item-label">
-                      <span className="sv-ci-icon">⏰</span> Horario laboral
+
+                  {/* Horario laboral */}
+                  <div className="sv-ci">
+                    <span className="sv-ci-ico sv-ci-ico--gray">
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="7" stroke="#5A6069" strokeWidth="1.4"/><path d="M9 5.5V9l2.5 2" stroke="#5A6069" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </span>
-                    <span className="sv-confirm-item-value">Lunes a Viernes · 08:00 a 17:00</span>
+                    <div className="sv-ci-body">
+                      <span className="sv-ci-lbl">Horario laboral</span>
+                      <span className="sv-ci-val">Lunes a Viernes – 08:00 a 17:00</span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Right column */}
+                {/* Col 2 – Dates */}
                 <div className="sv-confirm-col">
-                  <div className="sv-confirm-item">
-                    <span className="sv-confirm-item-label">
-                      <span className="sv-ci-icon">📅</span> Inicio
+                  {/* Inicio */}
+                  <div className="sv-ci">
+                    <span className="sv-ci-ico sv-ci-ico--red">
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1.5" y="3.5" width="15" height="13" rx="1.5" stroke="#DA291C" strokeWidth="1.4" fill="#FFEBEE"/><path d="M1.5 7.5h15" stroke="#DA291C" strokeWidth="1.2"/><rect x="5.5" y="1" width="1.8" height="5" rx="0.9" fill="#DA291C"/><rect x="10.7" y="1" width="1.8" height="5" rx="0.9" fill="#DA291C"/></svg>
                     </span>
-                    <span className="sv-confirm-item-value">{fmtDate(startDate)}</span>
-                  </div>
-                  <div className="sv-confirm-item">
-                    <span className="sv-confirm-item-label">
-                      <span className="sv-ci-icon">📅</span> Fin
-                    </span>
-                    <span className="sv-confirm-item-value">{fmtDate(endDate)}</span>
-                  </div>
-                  <div className="sv-confirm-item">
-                    <span className="sv-confirm-item-label">
-                      <span className="sv-ci-icon">📊</span> Días laborables
-                    </span>
-                    <span className="sv-confirm-item-value sv-confirm-item-value--accent">
-                      {days} días
-                    </span>
-                  </div>
-                  <div className="sv-confirm-item">
-                    <span className="sv-confirm-item-label">
-                      <span className="sv-ci-icon">↩️</span> Retorno al trabajo
-                    </span>
-                    <span className="sv-confirm-item-value">{fmtDate(returnDate)}</span>
-                  </div>
-                  <div className="sv-confirm-item">
-                    <span className="sv-confirm-item-label">
-                      <span className="sv-ci-icon">💬</span> Comentario
-                    </span>
-                    <span className="sv-confirm-item-value sv-confirm-item-value--muted">
-                      {comments.trim() || 'Sin comentarios'}
-                    </span>
+                    <div className="sv-ci-body">
+                      <span className="sv-ci-lbl">Inicio</span>
+                      <span className="sv-ci-val">{fmtDate(startDate)}</span>
+                    </div>
                   </div>
 
-                  {/* Approver card */}
-                  <div className="sv-approver-card">
-                    <div className="sv-approver-header">Aprobador</div>
-                    <div className="sv-approver-row">
-                      <div className="sv-approver-avatar">{approverInitials}</div>
-                      <div>
-                        <div className="sv-approver-name">{user.approver ?? 'Jefe Directo'}</div>
-                        <div className="sv-approver-role">Jefe Directo</div>
-                      </div>
+                  {/* Fin */}
+                  <div className="sv-ci">
+                    <span className="sv-ci-ico sv-ci-ico--red">
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1.5" y="3.5" width="15" height="13" rx="1.5" stroke="#DA291C" strokeWidth="1.4" fill="#FFEBEE"/><path d="M1.5 7.5h15" stroke="#DA291C" strokeWidth="1.2"/><rect x="5.5" y="1" width="1.8" height="5" rx="0.9" fill="#DA291C"/><rect x="10.7" y="1" width="1.8" height="5" rx="0.9" fill="#DA291C"/></svg>
+                    </span>
+                    <div className="sv-ci-body">
+                      <span className="sv-ci-lbl">Fin</span>
+                      <span className="sv-ci-val">{fmtDate(endDate)}</span>
                     </div>
-                    <div className="sv-approver-note">
-                      <span>✅</span>
-                      <span>
-                        Tu solicitud será enviada a tu jefe directo para aprobación.
-                        Te notificaremos por correo y en el centro de tareas.
+                  </div>
+
+                  {/* Días laborables */}
+                  <div className="sv-ci">
+                    <span className="sv-ci-ico sv-ci-ico--red">
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1.5" y="3.5" width="15" height="13" rx="1.5" stroke="#DA291C" strokeWidth="1.4" fill="#FFEBEE"/><path d="M1.5 7.5h15" stroke="#DA291C" strokeWidth="1.2"/><rect x="5.5" y="1" width="1.8" height="5" rx="0.9" fill="#DA291C"/><rect x="10.7" y="1" width="1.8" height="5" rx="0.9" fill="#DA291C"/><path d="M6 12l2 2 4-4" stroke="#DA291C" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </span>
+                    <div className="sv-ci-body">
+                      <span className="sv-ci-lbl">Días laborables</span>
+                      <span className="sv-ci-val sv-ci-val--accent">{days} {days === 1 ? 'día' : 'días'}</span>
+                    </div>
+                  </div>
+
+                  {/* Retorno al trabajo */}
+                  <div className="sv-ci">
+                    <span className="sv-ci-ico sv-ci-ico--blue">
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M15 9V7a5 5 0 0 0-5-5H6" stroke="#0070F2" strokeWidth="1.4" strokeLinecap="round"/><path d="M3 4l3-2-3-2" stroke="#0070F2" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" transform="translate(0,2)"/><path d="M3 9v2a5 5 0 0 0 5 5h4" stroke="#0070F2" strokeWidth="1.4" strokeLinecap="round"/><path d="M15 14l-3 2 3 2" stroke="#0070F2" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" transform="translate(0,-2)"/></svg>
+                    </span>
+                    <div className="sv-ci-body">
+                      <span className="sv-ci-lbl">Retorno al trabajo</span>
+                      <span className="sv-ci-val">{fmtDate(returnDate)}</span>
+                    </div>
+                  </div>
+
+                  {/* Comentario */}
+                  <div className="sv-ci">
+                    <span className="sv-ci-ico sv-ci-ico--blue">
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="2" width="14" height="10" rx="2.5" stroke="#0070F2" strokeWidth="1.4" fill="#EBF4FF"/><path d="M5 16l2-4" stroke="#0070F2" strokeWidth="1.4" strokeLinecap="round"/><line x1="5.5" y1="6" x2="12.5" y2="6" stroke="#0070F2" strokeWidth="1" strokeLinecap="round"/><line x1="5.5" y1="8.5" x2="10" y2="8.5" stroke="#0070F2" strokeWidth="1" strokeLinecap="round"/></svg>
+                    </span>
+                    <div className="sv-ci-body">
+                      <span className="sv-ci-lbl">Comentario</span>
+                      <span className={`sv-ci-val${comments.trim() ? '' : ' sv-ci-val--muted'}`}>
+                        {comments.trim() || 'Sin comentarios'}
                       </span>
                     </div>
                   </div>
                 </div>
+
+                {/* Col 3 – Approver */}
+                <div className="sv-confirm-col sv-confirm-col--approver">
+                  <div className="sv-approver-header">Aprobador</div>
+                  <div className="sv-approver-row">
+                    <div
+                      className="sv-approver-avatar"
+                      style={approverPhoto ? { background: 'transparent', padding: 0, overflow: 'hidden' } : {}}
+                    >
+                      {approverPhoto
+                        ? <img src={`${import.meta.env.BASE_URL}${approverPhoto}`} alt={approverName} className="sv-avatar-img" />
+                        : approverInitials}
+                    </div>
+                    <div>
+                      <div className="sv-approver-name">{approverName}</div>
+                      <div className="sv-approver-role">Jefe Directo</div>
+                    </div>
+                  </div>
+                  <div className="sv-approver-note">
+                    <span className="sv-approver-note-icon" aria-hidden="true">
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2L3 4.5v4C3 12 5.6 14.8 9 15.5 12.4 14.8 15 12 15 8.5v-4L9 2z" fill="#E8F5E9" stroke="#107E3E" strokeWidth="1.4"/><path d="M6 9l2.5 2.5 4-4" stroke="#107E3E" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </span>
+                    <span>
+                      Tu solicitud será enviada a{' '}
+                      <strong>{approverName}</strong>{' '}
+                      para aprobación. Te notificaremos por correo y en el centro de tareas.
+                    </span>
+                  </div>
+                </div>
+
               </div>
             </div>
 
@@ -721,7 +837,8 @@ const SolicitudVacaciones: React.FC<Props> = ({ user, onAddRequest, onNavigate }
                 Cancelar
               </button>
               <button className="wz-btn wz-btn-primary sv-confirm-btn" onClick={handleConfirm}>
-                Confirmar solicitud ✈
+                Confirmar solicitud
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{marginLeft:'6px'}}><path d="M2 8l10 0M9 4l4 4-4 4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </button>
             </div>
           </div>
@@ -731,30 +848,30 @@ const SolicitudVacaciones: React.FC<Props> = ({ user, onAddRequest, onNavigate }
       {/* ── Mobile bottom navigation ─────────────────────────────── */}
       <nav className="sv-mobile-nav" aria-label="Navegación principal">
         <div className="sv-mobile-nav-inner-wrap">
+          {/* Inicio — izquierda */}
           <button className="sv-nav-item" onClick={() => onNavigate('inicio')}>
-            <span className="sv-nav-icon">🏠</span>
+            <svg className="sv-nav-svg" viewBox="0 0 24 24" fill="none">
+              <path d="M3 12L12 4l9 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M5 10v9a1 1 0 0 0 1 1h4v-5h4v5h4a1 1 0 0 0 1-1v-9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
             <span className="sv-nav-label">Inicio</span>
           </button>
-          <button className="sv-nav-item" onClick={() => onNavigate('mis-solicitudes')}>
-            <span className="sv-nav-icon">📋</span>
-            <span className="sv-nav-label">Solicitudes</span>
-          </button>
+
+          {/* Vacaciones — centro FAB */}
           <button className="sv-nav-item sv-nav-item--fab">
             <span className="sv-nav-fab">+</span>
             <span className="sv-nav-label sv-nav-label--active">Vacaciones</span>
           </button>
-          {(user.role === 'jefe_aprobador' || user.role === 'administrador_gh') && (
-            <button
-              className="sv-nav-item"
-              onClick={() => onNavigate('solicitudes-pendientes', 'aprobaciones')}
-            >
-              <span className="sv-nav-icon">✅</span>
-              <span className="sv-nav-label">Aprobac.</span>
-            </button>
-          )}
-          <button className="sv-nav-item">
-            <span className="sv-nav-icon">👤</span>
-            <span className="sv-nav-label">Perfil</span>
+
+          {/* Solicitudes — derecha */}
+          <button className="sv-nav-item" onClick={() => onNavigate('mis-solicitudes')}>
+            <svg className="sv-nav-svg" viewBox="0 0 24 24" fill="none">
+              <rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" strokeWidth="1.8"/>
+              <line x1="9" y1="8" x2="15" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="9" y1="16" x2="12" y2="16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            <span className="sv-nav-label">Solicitudes</span>
           </button>
         </div>
       </nav>

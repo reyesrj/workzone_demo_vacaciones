@@ -303,7 +303,7 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
                       style={{ background: itemPhoto ? 'transparent' : avatarColor, padding: itemPhoto ? 0 : undefined, overflow: 'hidden' }}
                     >
                       {itemPhoto
-                        ? <img src={`${import.meta.env.BASE_URL}{itemPhoto}`} alt={req.userName} className="ap-avatar-img" />
+                        ? <img src={`${import.meta.env.BASE_URL}${itemPhoto}`} alt={req.userName} className="ap-avatar-img" />
                         : getInitials(req.userName)}
                     </div>
                     <div className="ap-item-meta">
@@ -378,7 +378,7 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
                   style={{ background: collaborator?.photo ? 'transparent' : (AVATAR_COLORS[selected.userRole] ?? '#DA291C'), padding: collaborator?.photo ? 0 : undefined, overflow: 'hidden' }}
                 >
                   {collaborator?.photo
-                    ? <img src={collaborator.photo} alt={selected.userName} className="ap-avatar-img" />
+                    ? <img src={`${import.meta.env.BASE_URL}${collaborator.photo}`} alt={selected.userName} className="ap-avatar-img" />
                     : getInitials(selected.userName)}
                 </div>
                 <div className="ap-det-emp-info">

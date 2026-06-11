@@ -8,7 +8,6 @@ import SolicitudVacaciones from '../pages/SolicitudVacaciones';
 import MisSolicitudes from '../pages/MisSolicitudes';
 import AprobacionVacaciones from '../pages/AprobacionVacaciones';
 import ReportesVacaciones from '../pages/ReportesVacaciones';
-import Trazabilidad from '../pages/Trazabilidad';
 import '../styles/workzone.css';
 
 /* ------------------------------------------------------------------ */
@@ -32,8 +31,6 @@ const SPACES: SpaceDef[] = [
     roles: ALL_ROLES,
     pages: [
       { id: 'inicio', label: 'Inicio' },
-      { id: 'solicitar-vacaciones', label: 'Solicitar Vacaciones' },
-      { id: 'mis-solicitudes', label: 'Mis Solicitudes' },
     ],
   },
   {
@@ -49,10 +46,7 @@ const SPACES: SpaceDef[] = [
     id: 'reportes',
     label: 'Reportes',
     roles: ['jefe_aprobador', 'administrador_gh'],
-    pages: [
-      { id: 'reporte-vacaciones', label: 'Reporte de Vacaciones' },
-      { id: 'trazabilidad', label: 'Trazabilidad' },
-    ],
+    pages: [],
   },
 ];
 
@@ -149,9 +143,8 @@ const WorkZoneShell: React.FC<Props> = ({ user, onLogout }) => {
           />
         );
       case 'reporte-vacaciones':
-        return <ReportesVacaciones user={user} requests={requests} />;
       case 'trazabilidad':
-        return <Trazabilidad user={user} requests={requests} />;
+        return <ReportesVacaciones user={user} requests={requests} />;
       default:
         return (
           <HomePage

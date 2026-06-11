@@ -1,832 +1,712 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { USERS, ROLE_LABELS } from '../data/users';
+import React, { useState, useMemo } from 'react';
+import { USERS } from '../data/users';
 import type { User } from '../data/users';
-import type { VacationRequest, RequestStatus } from '../data/vacationRequests';
-import { STATUS_LABELS } from '../data/vacationRequests';
+import type { VacationRequest } from '../data/vacationRequests';
+import SpacePage from '../components/SpacePage';
 
 /* ------------------------------------------------------------------ */
-/*  Constants & types                                                    */
+/*  Types & constants                                                    */
 /* ------------------------------------------------------------------ */
 
-type ScopeType    = 'directo' | 'jerarquia' | 'organizacion';
-type StatusFilter = 'all' | 'pendientes' | 'aprobadas' | 'rechazadas' | 'anulaciones';
-type PeriodKey    = 'all' | 'year' | 'q1' | 'q2' | 'q3' | 'q4' | 'custom';
+type VacStatus = 'al_dia' | 'atencion' | 'riesgo';
 
-const SCOPE_LABELS: Record<ScopeType, string> = {
-  directo:      'Mi equipo directo',
-  jerarquia:    'Toda mi jerarquía',
-  organizacion: 'Organización completa',
+interface ColabRow {
+  user:        User;
+  saldo:       number;
+  pendientes:  number;
+  vencidas:    number;
+  planificadas:number;
+  status:      VacStatus;
+  lastUpdate:  string;
+  area:        string;
+  gerencia:    string;
+  jefatura:    string;
+}
+
+interface Props {
+  user:     User;
+  requests: VacationRequest[];
+}
+
+const DEPT_GERENCIA: Record<string, string> = {
+  'Tecnología':       'Tecnología',
+  'Operaciones':      'Operaciones',
+  'Recursos Humanos': 'Recursos Humanos',
+  'Legal':            'Legal',
+  'Comercial':        'Comercial',
+  'Finanzas':         'Finanzas',
 };
 
-const SCOPE_ICONS: Record<ScopeType, string> = {
-  directo:      '👥',
-  jerarquia:    '🏢',
-  organizacion: '🌐',
-};
+const GERENCIAS   = ['Todas', 'Tecnología', 'Operaciones', 'Recursos Humanos', 'Legal', 'Comercial', 'Finanzas'];
+const JEFATURAS   = ['Todas', 'Dirección Legal', 'Ventas B2B', 'Infraestructura', 'Operaciones', 'Contabilidad'];
+const STATUS_OPTS = ['Todas', 'Al día', 'Atención', 'Riesgo'];
+const PAGE_SIZES  = [5, 10, 20, 50];
 
 const SHORT_MONTHS = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-const LONG_DAYS    = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
-const YEAR         = new Date().getFullYear();
-
-const PERIODS: { value: PeriodKey; label: string }[] = [
-  { value: 'all',    label: 'Todo' },
-  { value: 'year',   label: `${YEAR}` },
-  { value: 'q1',     label: 'T1' },
-  { value: 'q2',     label: 'T2' },
-  { value: 'q3',     label: 'T3' },
-  { value: 'q4',     label: 'T4' },
-  { value: 'custom', label: 'Período…' },
-];
-
-const AVATAR_COLORS: Record<string, string> = {
-  colaborador_standard: '#DA291C',
-  colaborador_rotativo: '#e76500',
-  jefe_aprobador:       '#188918',
-  administrador_gh:     '#6b3fa0',
-};
-
-const STATUS_TAG: Record<RequestStatus, { label: string; cls: string }> = {
-  creado:              { label: 'Creado',         cls: 'info'    },
-  pendiente_jefe:      { label: 'Por aprobar',    cls: 'warning' },
-  aprobado_jefe:       { label: 'Aprobado Jefe',  cls: 'info'    },
-  pendiente_gh:        { label: 'Por aprobar GH', cls: 'warning' },
-  aprobado:            { label: 'Aprobado',       cls: 'success' },
-  rechazado:           { label: 'Rechazado',      cls: 'error'   },
-  pendiente_anulacion: { label: 'Pend. anulac.',  cls: 'warning' },
-  anulado:             { label: 'Anulado',        cls: 'error'   },
-  anulacion_rechazada: { label: 'Anul. rechazada',cls: 'error'   },
-};
-
-const dotCls = (s: RequestStatus) => {
-  if (['aprobado','aprobado_jefe'].includes(s)) return 'success';
-  if (['rechazado','anulado','anulacion_rechazada'].includes(s)) return 'error';
-  if (['pendiente_jefe','pendiente_gh','pendiente_anulacion'].includes(s)) return 'warning';
-  return 'info';
-};
-
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                              */
-/* ------------------------------------------------------------------ */
-
-const fmtShort = (d: string) => {
-  if (!d) return '';
+const fmtDate = (d: string) => {
+  if (!d) return '—';
   const dt = new Date(d + 'T00:00:00');
   return `${dt.getDate()} ${SHORT_MONTHS[dt.getMonth()]}. ${dt.getFullYear()}`;
 };
-const fmtLong = (d: string) => {
-  if (!d) return '';
-  const dt = new Date(d + 'T00:00:00');
-  return `${LONG_DAYS[dt.getDay()]} ${dt.getDate()} ${SHORT_MONTHS[dt.getMonth()]}. ${dt.getFullYear()}`;
+
+const getVacStatus = (u: User): VacStatus => {
+  if (u.vacationBalanceVencidas > 0) return 'riesgo';
+  if (u.vacationBalancePendientes > 0) return 'atencion';
+  return 'al_dia';
 };
-const fmtRelTime = (date: string, time?: string) => {
-  const today     = new Date().toISOString().split('T')[0];
-  const yesterday = new Date(Date.now() - 86_400_000).toISOString().split('T')[0];
-  const prefix    = date === today ? 'Hoy' : date === yesterday ? 'Ayer' : fmtShort(date);
-  return time ? `${prefix}, ${time}` : prefix;
+
+const STATUS_LABEL: Record<VacStatus, string> = {
+  al_dia:   'Al día',
+  atencion: 'Atención',
+  riesgo:   'Riesgo',
 };
-const countCalDays = (s: string, e: string) => {
-  if (!s || !e) return 0;
-  const a = new Date(s + 'T00:00:00'), b = new Date(e + 'T00:00:00');
-  return Math.round((b.getTime() - a.getTime()) / 86_400_000) + 1;
+
+const STATUS_CLS: Record<VacStatus, string> = {
+  al_dia:   'rp-pill--green',
+  atencion: 'rp-pill--orange',
+  riesgo:   'rp-pill--red',
 };
-const calcReturn = (end: string) => {
-  if (!end) return '';
-  const d = new Date(end + 'T00:00:00');
-  d.setDate(d.getDate() + 1);
-  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
-  return d.toISOString().split('T')[0];
+
+/* ------------------------------------------------------------------ */
+/*  SVG Donut helper                                                     */
+/* ------------------------------------------------------------------ */
+
+interface DonutSlice { pct: number; color: string; }
+
+const SvgDonut: React.FC<{ slices: DonutSlice[]; size?: number }> = ({ slices, size = 160 }) => {
+  const r = 55; const cx = 80; const cy = 80;
+  const circ = 2 * Math.PI * r;
+  let offset = 0;
+
+  const paths = slices.map((s, i) => {
+    const len = (s.pct / 100) * circ;
+    const el = (
+      <circle
+        key={i}
+        cx={cx} cy={cy} r={r}
+        fill="none"
+        stroke={s.color}
+        strokeWidth="22"
+        strokeDasharray={`${len} ${circ - len}`}
+        strokeDashoffset={-offset}
+        style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }}
+      />
+    );
+    offset += len;
+    return el;
+  });
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 160 160">
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f0f0f0" strokeWidth="22"/>
+      {paths}
+    </svg>
+  );
 };
-const getInitials = (name: string) =>
-  name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                            */
 /* ------------------------------------------------------------------ */
 
-interface Props { user: User; requests: VacationRequest[] }
-
-const PAGE_SIZE = 8;
-
 const ReportesVacaciones: React.FC<Props> = ({ user, requests }) => {
-  const isAdmin   = user.role === 'administrador_gh';
-  const isManager = user.role === 'jefe_aprobador';
+  /* ── Filters ── */
+  const [search,       setSearch]      = useState('');
+  const [filterArea,   setFilterArea]  = useState('Todas');
+  const [filterGer,    setFilterGer]   = useState('Todas');
+  const [filterJef,    setFilterJef]   = useState('Todas');
+  const [filterStatus, setFilterStatus]= useState('Todas');
+  const [filterDesde,  setFilterDesde] = useState('');
+  const [filterHasta,  setFilterHasta] = useState('');
+  const [filtersOpen,  setFiltersOpen] = useState(true);
 
-  /* ── Hierarchy ----------------------------------------------------- */
-  const directReports = useMemo(
-    () => USERS.filter(u => u.managerId === user.id), [user.id]);
-  const indirectReports = useMemo(
-    () => USERS.filter(u => u.managerId && directReports.some(d => d.id === u.managerId)),
-    [directReports]);
-  const hasIndirect = indirectReports.length > 0;
+  /* ── Table ── */
+  const [page,     setPage]    = useState(1);
+  const [pageSize, setPageSize]= useState(5);
+  const [sortCol,  setSortCol] = useState<keyof ColabRow | null>(null);
+  const [sortAsc,  setSortAsc] = useState(true);
 
-  const defaultScope: ScopeType = isAdmin ? 'organizacion' : hasIndirect ? 'jerarquia' : 'directo';
-  const scopeOptions: ScopeType[] = isAdmin
-    ? ['jerarquia', 'organizacion']
-    : hasIndirect ? ['directo', 'jerarquia'] : [];
+  /* Build rows from USERS (demo with extended synthetic data) */
+  const allRows: ColabRow[] = useMemo(() => {
+    const baseRows = USERS.map(u => ({
+      user:         u,
+      saldo:        u.vacationBalance,
+      pendientes:   u.vacationBalancePendientes,
+      vencidas:     u.vacationBalanceVencidas,
+      planificadas: requests.filter(r =>
+        r.userId === u.id &&
+        ['aprobado','pendiente_jefe','pendiente_gh'].includes(r.status)
+      ).reduce((s, r) => s + r.days, 0),
+      status:      getVacStatus(u),
+      lastUpdate:  '2026-05-28',
+      area:        u.department,
+      gerencia:    DEPT_GERENCIA[u.department] ?? u.department,
+      jefatura:    u.approver ?? '—',
+    }));
 
-  /* ── State --------------------------------------------------------- */
-  const [scope,          setScope]         = useState<ScopeType>(defaultScope);
-  const [statusFilter,   setStatusFilter]  = useState<StatusFilter>('all');
-  const [search,         setSearch]        = useState('');
-  const [selectedId,     setSelectedId]    = useState<string | null>(null);
-  const [filterDept,     setFilterDept]    = useState('');
-  const [filterPeriod,   setFilterPeriod]  = useState<PeriodKey>('year');
-  const [filterStart,    setFilterStart]   = useState('');
-  const [filterEnd,      setFilterEnd]     = useState('');
-  const [page,           setPage]          = useState(1);
-  const [historyOpen,    setHistoryOpen]   = useState(false);
-  const [showExportMenu, setShowExportMenu]= useState(false);
+    /* Extend with synthetic collaborators for richer demo */
+    const extra: ColabRow[] = [
+      { user: { id:'sx1', name:'Juan Pérez Ramírez',    codigoEmpleado:'C25565', role:'colaborador_standard', department:'Legal',     email:'',initials:'JP', schedule:'',vacationBalance:35,vacationBalanceTruncas:0,vacationBalancePendientes:20,vacationBalanceVencidas:5, photo:undefined, managerId:undefined, approver:'María López', hireDate:'2022-01-10' }, saldo:35, pendientes:20, vencidas:5,  planificadas:10, status:'riesgo',   lastUpdate:'2026-05-28', area:'Legal',     gerencia:'Legal',    jefatura:'Dirección Legal' },
+      { user: { id:'sx2', name:'María Fernanda López',  codigoEmpleado:'C18392', role:'colaborador_standard', department:'Comercial', email:'',initials:'MF', schedule:'',vacationBalance:28,vacationBalanceTruncas:0,vacationBalancePendientes:10,vacationBalanceVencidas:0, photo:undefined, managerId:undefined, approver:'María López', hireDate:'2021-03-14' }, saldo:28, pendientes:10, vencidas:0,  planificadas:8,  status:'atencion', lastUpdate:'2026-05-28', area:'Comercial', gerencia:'Comercial',jefatura:'Ventas B2B'     },
+      { user: { id:'sx3', name:'Carlos Alberto Rojas',  codigoEmpleado:'C17831', role:'colaborador_standard', department:'Operaciones',email:'',initials:'CA', schedule:'',vacationBalance:18,vacationBalanceTruncas:0,vacationBalancePendientes:5, vacationBalanceVencidas:0, photo:undefined, managerId:undefined, approver:'María López', hireDate:'2020-06-20' }, saldo:18, pendientes:5,  vencidas:0,  planificadas:5,  status:'al_dia',   lastUpdate:'2026-05-27', area:'Operaciones','gerencia':'Operaciones',jefatura:'Operaciones'   },
+      { user: { id:'sx4', name:'Lucía Valentina Díaz',  codigoEmpleado:'C19280', role:'colaborador_standard', department:'Tecnología',email:'',initials:'LV', schedule:'',vacationBalance:30,vacationBalanceTruncas:0,vacationBalancePendientes:12,vacationBalanceVencidas:2, photo:undefined, managerId:undefined, approver:'María López', hireDate:'2021-11-03' }, saldo:30, pendientes:12, vencidas:2,  planificadas:10, status:'atencion', lastUpdate:'2026-05-27', area:'Tecnología','gerencia':'Tecnología',jefatura:'Infraestructura'},
+      { user: { id:'sx5', name:'José Antonio García',   codigoEmpleado:'C16472', role:'colaborador_standard', department:'Finanzas',  email:'',initials:'JA', schedule:'',vacationBalance:22,vacationBalanceTruncas:0,vacationBalancePendientes:8, vacationBalanceVencidas:0, photo:undefined, managerId:undefined, approver:'María López', hireDate:'2019-08-15' }, saldo:22, pendientes:8,  vencidas:0,  planificadas:6,  status:'al_dia',   lastUpdate:'2026-05-26', area:'Finanzas',  gerencia:'Finanzas', jefatura:'Contabilidad'   },
+    ];
 
-  /* ── Scoped users -------------------------------------------------- */
-  const userMap    = useMemo(() => new Map(USERS.map(u => [u.id, u])), []);
-  const scopedUsers = useMemo(() => {
-    if (isAdmin) return USERS;
-    if (scope === 'directo') return [user, ...directReports];
-    return [user, ...directReports, ...indirectReports];
-  }, [scope, isAdmin, user, directReports, indirectReports]);
-  const scopedIds  = useMemo(() => new Set(scopedUsers.map(u => u.id)), [scopedUsers]);
-  const deptOptions = useMemo(
-    () => Array.from(new Set(scopedUsers.map(u => u.department))).sort(), [scopedUsers]);
+    return [...baseRows, ...extra];
+  }, [requests]);
 
-  /* ── Period dates -------------------------------------------------- */
-  const periodDates = useMemo((): { start: string; end: string } | null => {
-    const y = YEAR;
-    if (filterPeriod === 'year')   return { start: `${y}-01-01`, end: `${y}-12-31` };
-    if (filterPeriod === 'q1')     return { start: `${y}-01-01`, end: `${y}-03-31` };
-    if (filterPeriod === 'q2')     return { start: `${y}-04-01`, end: `${y}-06-30` };
-    if (filterPeriod === 'q3')     return { start: `${y}-07-01`, end: `${y}-09-30` };
-    if (filterPeriod === 'q4')     return { start: `${y}-10-01`, end: `${y}-12-31` };
-    if (filterPeriod === 'custom' && filterStart && filterEnd)
-      return { start: filterStart, end: filterEnd };
-    return null;
-  }, [filterPeriod, filterStart, filterEnd]);
-
-  /* ── Filtered requests --------------------------------------------- */
-  const filteredRequests = useMemo(() => {
-    return requests.filter(r => {
-      if (!scopedIds.has(r.userId)) return false;
-      if (filterDept) { if (userMap.get(r.userId)?.department !== filterDept) return false; }
-      if (statusFilter === 'pendientes'  && !['pendiente_jefe','pendiente_gh'].includes(r.status)) return false;
-      if (statusFilter === 'aprobadas'   && !['aprobado','aprobado_jefe'].includes(r.status)) return false;
-      if (statusFilter === 'rechazadas'  && r.status !== 'rechazado') return false;
-      if (statusFilter === 'anulaciones' && !['pendiente_anulacion','anulado','anulacion_rechazada'].includes(r.status)) return false;
-      if (periodDates && (r.startDate > periodDates.end || r.endDate < periodDates.start)) return false;
-      if (search.trim()) {
-        const q = search.toLowerCase();
-        if (!r.userName.toLowerCase().includes(q) && !r.id.toLowerCase().includes(q)) return false;
+  /* ── Filtered rows ── */
+  const filtered = useMemo(() => {
+    return allRows.filter(r => {
+      const q = search.toLowerCase();
+      if (q && !r.user.name.toLowerCase().includes(q) && !r.user.codigoEmpleado.toLowerCase().includes(q)) return false;
+      if (filterArea !== 'Todas' && r.area !== filterArea) return false;
+      if (filterGer  !== 'Todas' && r.gerencia !== filterGer) return false;
+      if (filterStatus !== 'Todas') {
+        const map: Record<string, VacStatus> = { 'Al día':'al_dia', 'Atención':'atencion', 'Riesgo':'riesgo' };
+        if (r.status !== map[filterStatus]) return false;
       }
       return true;
-    }).sort((a, b) => (b.history.at(-1)?.date ?? '').localeCompare(a.history.at(-1)?.date ?? ''));
-  }, [requests, scopedIds, filterDept, statusFilter, periodDates, search, userMap]);
-
-  /* ── Auto-select --------------------------------------------------- */
-  useEffect(() => {
-    setSelectedId(filteredRequests[0]?.id ?? null);
-    setPage(1);
-  }, [statusFilter, filterPeriod, filterDept, scope, search]);
-
-  /* ── Counts & KPIs ------------------------------------------------- */
-  const baseScopedReqs = useMemo(
-    () => requests.filter(r => scopedIds.has(r.userId)), [requests, scopedIds]);
-
-  const counts = useMemo(() => ({
-    all:        baseScopedReqs.length,
-    pendientes: baseScopedReqs.filter(r => ['pendiente_jefe','pendiente_gh'].includes(r.status)).length,
-    aprobadas:  baseScopedReqs.filter(r => ['aprobado','aprobado_jefe'].includes(r.status)).length,
-    rechazadas: baseScopedReqs.filter(r => r.status === 'rechazado').length,
-    anulaciones:baseScopedReqs.filter(r => ['pendiente_anulacion','anulado','anulacion_rechazada'].includes(r.status)).length,
-  }), [baseScopedReqs]);
-
-  const kpis = useMemo(() => {
-    const diasAprobados = baseScopedReqs
-      .filter(r => ['aprobado','aprobado_jefe'].includes(r.status))
-      .reduce((s, r) => s + r.days, 0);
-    const saldoPromedio = scopedUsers.length
-      ? Math.round(scopedUsers.reduce((s, u) => s + u.vacationBalance, 0) / scopedUsers.length)
-      : 0;
-    const usoPct = counts.all
-      ? Math.round((counts.aprobadas / counts.all) * 100)
-      : 0;
-    const vencidosAlerta = scopedUsers.filter(u => u.vacationBalanceVencidas > 0).length;
-    return { diasAprobados, saldoPromedio, usoPct, vencidosAlerta };
-  }, [baseScopedReqs, scopedUsers, counts]);
-
-  /* ── Pagination ---------------------------------------------------- */
-  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE));
-  const paged = filteredRequests.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  /* ── Selected request ---------------------------------------------- */
-  const selected = selectedId
-    ? (requests.find(r => r.id === selectedId) ?? filteredRequests[0] ?? null)
-    : (filteredRequests[0] ?? null);
-
-  const selUser  = selected ? userMap.get(selected.userId) : null;
-  const calDays  = selected ? countCalDays(selected.startDate, selected.endDate) : 0;
-  const retDate  = selected ? calcReturn(selected.endDate) : '';
-
-  const rejectionEntry = useMemo(() => {
-    if (!selected || selected.status !== 'rechazado') return null;
-    return [...selected.history].reverse().find(h => h.status === 'rechazado') ?? null;
-  }, [selected]);
-
-  const getApprovalDate = (history: VacationRequest['history']) =>
-    [...history].reverse().find(h => [
-      'aprobado','aprobado_jefe','pendiente_gh','pendiente_anulacion',
-      'rechazado','anulado','anulacion_rechazada',
-    ].includes(h.status))?.date ?? '—';
-
-  /* ── Risk insights (Manager / Admin) ------------------------------ */
-  const showInsights = isAdmin || isManager;
-
-  const riskMonths = useMemo(() => {
-    if (!showInsights) return [];
-    const monthMap = new Map<string, Set<string>>();
-    baseScopedReqs
-      .filter(r => ['aprobado','aprobado_jefe'].includes(r.status))
-      .forEach(r => {
-        const cur = new Date(r.startDate + 'T00:00:00');
-        const end = new Date(r.endDate   + 'T00:00:00');
-        while (cur <= end) {
-          const key = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`;
-          if (!monthMap.has(key)) monthMap.set(key, new Set());
-          monthMap.get(key)!.add(r.userId);
-          cur.setDate(cur.getDate() + 1);
-        }
-      });
-    const threshold = Math.max(2, Math.floor(scopedUsers.length * 0.3));
-    return Array.from(monthMap.entries())
-      .filter(([, u]) => u.size >= threshold)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(0, 5)
-      .map(([month, u]) => {
-        const [y, m] = month.split('-');
-        return {
-          label: `${SHORT_MONTHS[parseInt(m) - 1]}. ${y}`,
-          count: u.size,
-          pct:   Math.min(100, Math.round((u.size / scopedUsers.length) * 100)),
-        };
-      });
-  }, [baseScopedReqs, scopedUsers, showInsights]);
-
-  const balanceAlerts = useMemo(() => {
-    if (!showInsights) return [];
-    return scopedUsers
-      .filter(u => u.vacationBalanceVencidas > 0)
-      .sort((a, b) => b.vacationBalanceVencidas - a.vacationBalanceVencidas)
-      .slice(0, 4);
-  }, [scopedUsers, showInsights]);
-
-  /* ── Export -------------------------------------------------------- */
-  const downloadReport = (format: 'csv' | 'excel') => {
-    const header = [
-      'Codigo','Colaborador','Fecha Ingreso','Cargo','Responsable','Dirección',
-      'SubDirección','Gerencia','Jefatura','Saldo Vacacional','Truncas',
-      'Pendientes','Vencidas','Planificadas','Número Solicitud',
-      'Fecha Aprobación','Fecha Inicio','Fecha Fin','Estado',
-    ].map(h => `"${h}"`).join(',');
-    const rows = filteredRequests.map(req => {
-      const u = userMap.get(req.userId);
-      return [
-        u?.codigoEmpleado ?? '—', req.userName, u?.hireDate ?? '—',
-        ROLE_LABELS[req.userRole], u?.approver ?? '—', u?.department ?? '—',
-        u?.schedule ?? '—', ROLE_LABELS[u?.role ?? req.userRole],
-        u?.approver ?? req.currentApprover ?? '—',
-        u?.vacationBalance ?? 0, u?.vacationBalanceTruncas ?? 0,
-        u?.vacationBalancePendientes ?? 0, u?.vacationBalanceVencidas ?? 0,
-        req.days, req.id, getApprovalDate(req.history),
-        req.startDate, req.endDate, STATUS_LABELS[req.status],
-      ].map(v => `"${String(v).replace(/"/g,'""')}"`).join(',');
     });
-    const csv  = [header, ...rows].join('\n');
-    const blob = new Blob([csv], { type: format === 'excel' ? 'application/vnd.ms-excel' : 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url;
-    a.download = `reporte-vacaciones.${format === 'excel' ? 'xls' : 'csv'}`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setShowExportMenu(false);
+  }, [allRows, search, filterArea, filterGer, filterStatus]);
+
+  /* ── KPIs ── */
+  const totalColabs    = filtered.length;
+  const pendCount      = filtered.filter(r => r.pendientes > 0).length;
+  const vencCount      = filtered.filter(r => r.vencidas > 0).length;
+  const planCount      = filtered.filter(r => r.planificadas > 0).length;
+
+  /* ── Donut data ── */
+  const alDiaCount   = filtered.filter(r => r.status === 'al_dia').length;
+  const atencionCount= filtered.filter(r => r.status === 'atencion').length;
+  const riesgoCount  = filtered.filter(r => r.status === 'riesgo').length;
+  const total        = filtered.length || 1;
+  const pctAlDia     = Math.round((alDiaCount   / total) * 100);
+  const pctAtencion  = Math.round((atencionCount/ total) * 100);
+  const pctRiesgo    = Math.round((riesgoCount  / total) * 100);
+
+  /* ── Bar chart: vencidas por area ── */
+  const vencByArea = useMemo(() => {
+    const map: Record<string, number> = {};
+    filtered.forEach(r => { if (r.vencidas > 0) map[r.area] = (map[r.area] ?? 0) + r.vencidas; });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  }, [filtered]);
+  const maxVenc = vencByArea.reduce((m, [, v]) => Math.max(m, v), 1);
+
+  /* ── Pagination ── */
+  const pages     = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  const handleSort = (col: keyof ColabRow) => {
+    if (sortCol === col) setSortAsc(a => !a);
+    else { setSortCol(col); setSortAsc(true); }
+    setPage(1);
   };
 
-  /* ----------------------------------------------------------------- */
-  /*  Render                                                             */
-  /* ----------------------------------------------------------------- */
+  const handleClear = () => {
+    setSearch(''); setFilterArea('Todas'); setFilterGer('Todas');
+    setFilterJef('Todas'); setFilterStatus('Todas'); setFilterDesde(''); setFilterHasta('');
+    setPage(1);
+  };
+
+  const canViewAll = user.role === 'administrador_gh' || user.role === 'jefe_aprobador';
+
+  if (!canViewAll) {
+    return (
+      <SpacePage spaceName="Mis Vacaciones" pageName="Reportes">
+        <div className="rp-no-access">
+          <div className="rp-no-access-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <circle cx="24" cy="24" r="22" fill="#FFEBEE" stroke="#C62828" strokeWidth="2"/>
+              <path d="M24 14v14M24 34v2" stroke="#C62828" strokeWidth="2.5" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <h3>Acceso restringido</h3>
+          <p>Esta sección está disponible solo para jefes aprobadores y administradores GH.</p>
+        </div>
+      </SpacePage>
+    );
+  }
+
   return (
-    <div className="rp-page">
-
-      {/* ══════════ TOOLBAR ══════════════════════════════════════ */}
-      <div className="rp-toolbar">
-        <div className="rp-toolbar-left">
-          <span className="rp-toolbar-title">Historial de solicitudes</span>
-
-          {/* Scope selector — role-adaptive */}
-          {scopeOptions.length > 0 ? (
-            <div className="rp-scope-tabs">
-              {scopeOptions.map(opt => (
-                <button
-                  key={opt}
-                  className={`rp-scope-tab${scope === opt ? ' rp-scope-tab--active' : ''}`}
-                  onClick={() => setScope(opt)}
-                >
-                  {SCOPE_ICONS[opt]} {SCOPE_LABELS[opt]}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <span className="rp-scope-chip">
-              {SCOPE_ICONS[defaultScope]} {SCOPE_LABELS[defaultScope]}
-            </span>
-          )}
+    <SpacePage spaceName="Mis Vacaciones" pageName="Reportes">
+      <div className="rp-wrap">
+        {/* ════════ PAGE TITLE ════════ */}
+        <div className="rp-page-title-row">
+          <div>
+            <div className="wz-breadcrumb">Mis Vacaciones › Reportes</div>
+            <h2 className="wz-page-heading">Trazabilidad de vacaciones</h2>
+          </div>
+          <button className="rp-export-btn">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+              <path d="M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+              <path d="M8 1v8M5 6l3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Exportar
+          </button>
         </div>
 
-        <div className="rp-toolbar-right">
-          {/* Department filter — available to admin and managers with hierarchy */}
-          {(isAdmin || hasIndirect) && (
-            <select
-              className="rp-dept-select"
-              value={filterDept}
-              onChange={e => setFilterDept(e.target.value)}
+        {/* ════════ FILTROS ════════ */}
+        <div className="rp-filters-card">
+          <button className="rp-filters-toggle" onClick={() => setFiltersOpen(o => !o)}>
+            <span className="rp-filters-toggle-label">Filtros</span>
+            <svg
+              className={`rp-filters-chevron${filtersOpen ? ' rp-filters-chevron--open' : ''}`}
+              width="16" height="16" viewBox="0 0 16 16" fill="none"
             >
-              <option value="">Todas las áreas</option>
-              {deptOptions.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-          )}
+              <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
 
-          {/* Search */}
-          <div className="rp-search-box">
-            <span className="rp-search-icon">🔍</span>
-            <input
-              className="rp-search-input"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar colaborador…"
-            />
-            {search && <button className="rp-search-clear" onClick={() => setSearch('')}>✕</button>}
-          </div>
-
-          {/* Export with dropdown */}
-          <div className="rp-export-wrap">
-            <button
-              className="rp-export-btn"
-              onClick={() => setShowExportMenu(v => !v)}
-            >
-              ⬇ Exportar
-            </button>
-            {showExportMenu && (
-              <>
-                <div className="rp-export-backdrop" onClick={() => setShowExportMenu(false)} />
-                <div className="rp-export-menu">
-                  <button onClick={() => downloadReport('csv')}>📄 Exportar CSV</button>
-                  <button onClick={() => downloadReport('excel')}>📊 Exportar Excel (.xls)</button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ══════════ KPI STRIP ════════════════════════════════════ */}
-      <div className="rp-kpi-strip">
-        <div className="rp-kpi rp-kpi--total">
-          <div className="rp-kpi-num">{counts.all}</div>
-          <div className="rp-kpi-lbl">Total solicitudes</div>
-        </div>
-        <div className="rp-kpi rp-kpi--success">
-          <div className="rp-kpi-num">{counts.aprobadas}</div>
-          <div className="rp-kpi-lbl">Aprobadas</div>
-        </div>
-        <div className="rp-kpi rp-kpi--warning">
-          <div className="rp-kpi-num">{counts.pendientes}</div>
-          <div className="rp-kpi-lbl">Pendientes</div>
-        </div>
-        <div className="rp-kpi rp-kpi--error">
-          <div className="rp-kpi-num">{counts.rechazadas}</div>
-          <div className="rp-kpi-lbl">Rechazadas</div>
-        </div>
-        <div className="rp-kpi rp-kpi--days">
-          <div className="rp-kpi-num">{kpis.diasAprobados}</div>
-          <div className="rp-kpi-lbl">Días aprobados</div>
-        </div>
-        <div className="rp-kpi rp-kpi--balance">
-          <div className="rp-kpi-num">{kpis.saldoPromedio}</div>
-          <div className="rp-kpi-lbl">Saldo prom. (días)</div>
-        </div>
-        {kpis.vencidosAlerta > 0 && (
-          <div className="rp-kpi rp-kpi--alert">
-            <div className="rp-kpi-num">{kpis.vencidosAlerta}</div>
-            <div className="rp-kpi-lbl">Con saldos vencidos</div>
-          </div>
-        )}
-        <div className="rp-kpi rp-kpi--scope">
-          <div className="rp-kpi-num">{scopedUsers.length}</div>
-          <div className="rp-kpi-lbl">Colaboradores en scope</div>
-        </div>
-      </div>
-
-      {/* ══════════ BODY: MASTER + DETAIL ════════════════════════ */}
-      <div className="rp-body">
-
-        {/* ════ MASTER ════════════════════════════════════════ */}
-        <aside className="rp-master">
-
-          {/* Period quick filter */}
-          <div className="rp-period-strip">
-            {PERIODS.map(p => (
-              <button
-                key={p.value}
-                className={`rp-period-btn${filterPeriod === p.value ? ' rp-period-btn--active' : ''}`}
-                onClick={() => setFilterPeriod(p.value)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Custom date range */}
-          {filterPeriod === 'custom' && (
-            <div className="rp-custom-dates">
-              <input
-                type="date"
-                className="rp-date-input"
-                value={filterStart}
-                onChange={e => setFilterStart(e.target.value)}
-              />
-              <span>–</span>
-              <input
-                type="date"
-                className="rp-date-input"
-                value={filterEnd}
-                onChange={e => setFilterEnd(e.target.value)}
-              />
-            </div>
-          )}
-
-          {/* Status tabs */}
-          <div className="rp-status-strip">
-            {([
-              { key: 'all',         label: 'Todas',       count: counts.all         },
-              { key: 'pendientes',  label: 'Pendientes',  count: counts.pendientes  },
-              { key: 'aprobadas',   label: 'Aprobadas',   count: counts.aprobadas   },
-              { key: 'rechazadas',  label: 'Rechazadas',  count: counts.rechazadas  },
-              { key: 'anulaciones', label: 'Anulaciones', count: counts.anulaciones },
-            ] as const).map(({ key, label, count }) => (
-              <button
-                key={key}
-                className={`rp-status-btn${statusFilter === key ? ' rp-status-btn--active' : ''}`}
-                onClick={() => setStatusFilter(key)}
-              >
-                {label}
-                {count > 0 && <span className="rp-status-badge">{count}</span>}
-              </button>
-            ))}
-          </div>
-
-          {/* Request list */}
-          <div className="rp-list">
-            {filteredRequests.length === 0 ? (
-              <div className="rp-list-empty">
-                <div className="rp-list-empty-icon">🔍</div>
-                <p>Sin solicitudes para los filtros actuales</p>
-              </div>
-            ) : (
-              paged.map(req => {
-                const tag       = STATUS_TAG[req.status];
-                const lastEntry = req.history.at(-1);
-                const isActive  = (selected?.id ?? '') === req.id;
-                const aColor    = AVATAR_COLORS[req.userRole] ?? '#DA291C';
-                const itemPhoto = USERS.find(u => u.id === req.userId)?.photo;
-                return (
-                  <div
-                    key={req.id}
-                    className={`rp-item${isActive ? ' rp-item--active' : ''}`}
-                    onClick={() => setSelectedId(req.id)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={e => e.key === 'Enter' && setSelectedId(req.id)}
-                  >
-                    <div className="rp-item-top">
-                      <div className="rp-item-avatar" style={{ background: itemPhoto ? 'transparent' : aColor, padding: itemPhoto ? 0 : undefined, overflow: 'hidden' }}>
-                        {itemPhoto
-                          ? <img src={itemPhoto} alt={req.userName} className="rp-avatar-img" />
-                          : getInitials(req.userName)}
-                      </div>
-                      <div className="rp-item-meta">
-                        <span className="rp-item-name">{req.userName}</span>
-                        <span className="rp-item-time">
-                          {fmtRelTime(lastEntry?.date ?? '', lastEntry?.time)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="rp-item-dates">
-                      {fmtShort(req.startDate)} – {fmtShort(req.endDate)}
-                    </div>
-                    <div className="rp-item-footer">
-                      <span className={`ap-status-pill ap-status-pill--${tag.cls}`}>{tag.label}</span>
-                      <span className="rp-item-days">{req.days} días</span>
-                    </div>
+          {filtersOpen && (
+            <div className="rp-filters-body">
+              <div className="rp-filters-row">
+                {/* Buscar */}
+                <div className="rp-filter-field rp-filter-field--wide">
+                  <label className="rp-filter-label">Buscar colaborador</label>
+                  <div className="rp-search-wrap">
+                    <svg className="rp-search-ico" width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <circle cx="6.5" cy="6.5" r="5" stroke="#888" strokeWidth="1.4"/>
+                      <path d="M11 11l3 3" stroke="#888" strokeWidth="1.4" strokeLinecap="round"/>
+                    </svg>
+                    <input
+                      className="rp-input"
+                      placeholder="Nombre o código"
+                      value={search}
+                      onChange={e => { setSearch(e.target.value); setPage(1); }}
+                    />
                   </div>
-                );
-              })
+                </div>
+
+                {/* Área */}
+                <div className="rp-filter-field">
+                  <label className="rp-filter-label">Área</label>
+                  <select className="rp-select" value={filterArea} onChange={e => { setFilterArea(e.target.value); setPage(1); }}>
+                    {GERENCIAS.map(g => <option key={g}>{g}</option>)}
+                  </select>
+                </div>
+
+                {/* Gerencia */}
+                <div className="rp-filter-field">
+                  <label className="rp-filter-label">Gerencia</label>
+                  <select className="rp-select" value={filterGer} onChange={e => { setFilterGer(e.target.value); setPage(1); }}>
+                    {GERENCIAS.map(g => <option key={g}>{g}</option>)}
+                  </select>
+                </div>
+
+                {/* Jefatura */}
+                <div className="rp-filter-field">
+                  <label className="rp-filter-label">Jefatura</label>
+                  <select className="rp-select" value={filterJef} onChange={e => { setFilterJef(e.target.value); setPage(1); }}>
+                    {JEFATURAS.map(j => <option key={j}>{j}</option>)}
+                  </select>
+                </div>
+
+                {/* Estado vacacional */}
+                <div className="rp-filter-field">
+                  <label className="rp-filter-label">Estado vacacional</label>
+                  <select className="rp-select" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }}>
+                    {STATUS_OPTS.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+
+                {/* Rango de ingreso */}
+                <div className="rp-filter-field rp-filter-field--date">
+                  <label className="rp-filter-label">Rango de ingreso</label>
+                  <div className="rp-date-range">
+                    <input type="date" className="rp-input rp-input--date" placeholder="Desde" value={filterDesde} onChange={e => setFilterDesde(e.target.value)}/>
+                    <span className="rp-date-sep">—</span>
+                    <input type="date" className="rp-input rp-input--date" placeholder="Hasta" value={filterHasta} onChange={e => setFilterHasta(e.target.value)}/>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rp-filters-actions">
+                <button className="rp-btn-search" onClick={() => setPage(1)}>
+                  Buscar
+                </button>
+                <button className="rp-btn-clear" onClick={handleClear}>
+                  Limpiar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ════════ KPI STRIP ════════ */}
+        <div className="rp-kpi-grid">
+
+          <div className="rp-kpi rp-kpi--gray">
+            <div className="rp-kpi-ico rp-kpi-ico--gray">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <circle cx="9" cy="7" r="3.5" stroke="#555" strokeWidth="1.5"/>
+                <circle cx="17" cy="9" r="2.5" stroke="#888" strokeWidth="1.3"/>
+                <path d="M1 20c0-4 3.6-7 8-7s8 3 8 7" stroke="#555" strokeWidth="1.5" strokeLinecap="round"/>
+                <path d="M16 16c1.2-.7 2.6-1 4-1 2.2 0 4 1.3 4 3" stroke="#888" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <div className="rp-kpi-body">
+              <div className="rp-kpi-label">Colaboradores</div>
+              <div className="rp-kpi-value">{totalColabs.toLocaleString()}</div>
+              <div className="rp-kpi-sub">Total activos</div>
+            </div>
+          </div>
+
+          <div className="rp-kpi rp-kpi--orange">
+            <div className="rp-kpi-ico rp-kpi-ico--orange">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="9.5" stroke="#E65100" strokeWidth="1.5"/>
+                <path d="M12 7v5.5l3 2" stroke="#E65100" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div className="rp-kpi-body">
+              <div className="rp-kpi-label">Pendientes por gestionar</div>
+              <div className="rp-kpi-value rp-kpi-value--orange">{pendCount}</div>
+              <div className="rp-kpi-sub">Colaboradores</div>
+            </div>
+          </div>
+
+          <div className="rp-kpi rp-kpi--red">
+            <div className="rp-kpi-ico rp-kpi-ico--red">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <path d="M12 3L2 21h20L12 3Z" stroke="#C62828" strokeWidth="1.5" fill="#FFEBEE" strokeLinejoin="round"/>
+                <rect x="11" y="10" width="2" height="5.5" rx="1" fill="#C62828"/>
+                <circle cx="12" cy="17.5" r="1" fill="#C62828"/>
+              </svg>
+            </div>
+            <div className="rp-kpi-body">
+              <div className="rp-kpi-label">Vacaciones vencidas</div>
+              <div className="rp-kpi-value rp-kpi-value--red">{vencCount}</div>
+              <div className="rp-kpi-sub">Colaboradores</div>
+            </div>
+          </div>
+
+          <div className="rp-kpi rp-kpi--blue">
+            <div className="rp-kpi-ico rp-kpi-ico--blue">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <rect x="3" y="5" width="18" height="16" rx="2" stroke="#1565C0" strokeWidth="1.5" fill="#E3F2FD"/>
+                <path d="M3 9.5h18" stroke="#1565C0" strokeWidth="1.3"/>
+                <rect x="8" y="2.5" width="2" height="5" rx="1" fill="#1565C0"/>
+                <rect x="14" y="2.5" width="2" height="5" rx="1" fill="#1565C0"/>
+                <path d="M7.5 14.5l2.5 2.5L16.5 11" stroke="#1565C0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div className="rp-kpi-body">
+              <div className="rp-kpi-label">Vacaciones planificadas</div>
+              <div className="rp-kpi-value rp-kpi-value--blue">{planCount}</div>
+              <div className="rp-kpi-sub">Colaboradores</div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* ════════ ANALYTICS ROW ════════ */}
+        <div className="rp-analytics-row">
+
+          {/* Donut – Estado */}
+          <div className="rp-chart-card rp-chart-card--donut">
+            <div className="rp-chart-title">Estado de vacaciones</div>
+            <div className="rp-donut-wrap">
+              <SvgDonut slices={[
+                { pct: pctAlDia,    color: '#43A047' },
+                { pct: pctAtencion, color: '#FB8C00' },
+                { pct: pctRiesgo,   color: '#E53935' },
+              ]} size={160}/>
+              <div className="rp-donut-legend">
+                <div className="rp-dl-item">
+                  <span className="rp-dl-dot" style={{ background: '#43A047' }}/>
+                  <span className="rp-dl-label">Al día</span>
+                  <span className="rp-dl-val">{alDiaCount} ({pctAlDia}%)</span>
+                </div>
+                <div className="rp-dl-item">
+                  <span className="rp-dl-dot" style={{ background: '#FB8C00' }}/>
+                  <span className="rp-dl-label">Atención</span>
+                  <span className="rp-dl-val">{atencionCount} ({pctAtencion}%)</span>
+                </div>
+                <div className="rp-dl-item">
+                  <span className="rp-dl-dot" style={{ background: '#E53935' }}/>
+                  <span className="rp-dl-label">Riesgo</span>
+                  <span className="rp-dl-val">{riesgoCount} ({pctRiesgo}%)</span>
+                </div>
+              </div>
+            </div>
+            <p className="rp-chart-footnote">Basado en políticas corporativas de vacaciones.</p>
+          </div>
+
+          {/* Bar chart – Vencidas por área */}
+          <div className="rp-chart-card rp-chart-card--bar">
+            <div className="rp-chart-title">Vacaciones vencidas por gerencia</div>
+            {vencByArea.length === 0 ? (
+              <p className="rp-chart-empty">Sin días vencidos en el período.</p>
+            ) : (
+              <div className="rp-bar-list">
+                {vencByArea.map(([area, val]) => (
+                  <div key={area} className="rp-bar-item">
+                    <span className="rp-bar-label">{area}</span>
+                    <div className="rp-bar-track">
+                      <div
+                        className="rp-bar-fill"
+                        style={{ width: `${(val / maxVenc) * 100}%`, background: val >= 10 ? '#E53935' : val >= 5 ? '#FB8C00' : '#43A047' }}
+                      />
+                    </div>
+                    <span className="rp-bar-val">{val}</span>
+                  </div>
+                ))}
+              </div>
             )}
+          </div>
+
+          {/* Status summary */}
+          <div className="rp-chart-card rp-chart-card--summary">
+            <div className="rp-chart-title">Resumen por estado</div>
+            <div className="rp-summary-list">
+              <div className="rp-sum-item rp-sum-item--red">
+                <span className="rp-sum-dot" style={{ background: '#E53935' }}/>
+                <div className="rp-sum-body">
+                  <div className="rp-sum-name">Riesgo</div>
+                  <div className="rp-sum-desc">Colaboradores con vacaciones vencidas</div>
+                </div>
+                <span className="rp-sum-count">{riesgoCount}</span>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="rp-sum-arrow">
+                  <path d="M5 3l4 4-4 4" stroke="#bbb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <div className="rp-sum-item rp-sum-item--orange">
+                <span className="rp-sum-dot" style={{ background: '#FB8C00' }}/>
+                <div className="rp-sum-body">
+                  <div className="rp-sum-name">Atención</div>
+                  <div className="rp-sum-desc">Colaboradores con vacaciones próximas a vencer</div>
+                </div>
+                <span className="rp-sum-count">{atencionCount}</span>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="rp-sum-arrow">
+                  <path d="M5 3l4 4-4 4" stroke="#bbb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <div className="rp-sum-item rp-sum-item--green">
+                <span className="rp-sum-dot" style={{ background: '#43A047' }}/>
+                <div className="rp-sum-body">
+                  <div className="rp-sum-name">Al día</div>
+                  <div className="rp-sum-desc">Colaboradores con vacaciones al día</div>
+                </div>
+                <span className="rp-sum-count">{alDiaCount}</span>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="rp-sum-arrow">
+                  <path d="M5 3l4 4-4 4" stroke="#bbb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* ════════ TABLA COLABORADORES ════════ */}
+        <div className="rp-table-card">
+          <div className="rp-table-header">
+            <div>
+              <div className="rp-table-title">Colaboradores ({filtered.length.toLocaleString()})</div>
+            </div>
+            <div className="rp-table-tools">
+              <button className="rp-icon-btn" title="Configurar columnas">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
+                  <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M3.1 12.9l1.4-1.4M11.5 4.5l1.4-1.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                </svg>
+              </button>
+              <button className="rp-icon-btn" title="Vista de tabla">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+                  <rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+                  <rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+                  <rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+                </svg>
+              </button>
+              <button className="rp-icon-btn" title="Más opciones">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <circle cx="8" cy="3" r="1.2" fill="currentColor"/>
+                  <circle cx="8" cy="8" r="1.2" fill="currentColor"/>
+                  <circle cx="8" cy="13" r="1.2" fill="currentColor"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* ── Desktop table ── */}
+          <div className="rp-table-wrap">
+            <table className="rp-table">
+              <thead>
+                <tr>
+                  <th className="rp-th-sort" onClick={() => handleSort('user')}>
+                    <span>Colaborador</span>
+                    <SortIcon col="user" sortCol={sortCol} sortAsc={sortAsc}/>
+                  </th>
+                  <th>Área</th>
+                  <th>Gerencia</th>
+                  <th>Jefatura</th>
+                  <th className="rp-th-num rp-th-sort" onClick={() => handleSort('saldo')}>
+                    <span>Saldo (días)</span>
+                    <SortIcon col="saldo" sortCol={sortCol} sortAsc={sortAsc}/>
+                  </th>
+                  <th className="rp-th-num rp-th-sort" onClick={() => handleSort('pendientes')}>
+                    <span>Pendientes (días)</span>
+                    <SortIcon col="pendientes" sortCol={sortCol} sortAsc={sortAsc}/>
+                  </th>
+                  <th className="rp-th-num rp-th-sort" onClick={() => handleSort('vencidas')}>
+                    <span>Vencidas (días)</span>
+                    <SortIcon col="vencidas" sortCol={sortCol} sortAsc={sortAsc}/>
+                  </th>
+                  <th className="rp-th-num rp-th-sort" onClick={() => handleSort('planificadas')}>
+                    <span>Planificadas (días)</span>
+                    <SortIcon col="planificadas" sortCol={sortCol} sortAsc={sortAsc}/>
+                  </th>
+                  <th>Estado</th>
+                  <th>Última actualización</th>
+                  <th/>
+                </tr>
+              </thead>
+              <tbody>
+                {paginated.map(row => (
+                  <tr key={row.user.id} className="rp-tr">
+                    <td>
+                      <div className="rp-colab-cell">
+                        <div className="rp-colab-avatar" style={row.user.photo ? { background: 'transparent', padding: 0, overflow: 'hidden' } : {}}>
+                          {row.user.photo
+                            ? <img src={`${import.meta.env.BASE_URL}${row.user.photo}`} alt={row.user.name} className="rp-avatar-img"/>
+                            : row.user.initials}
+                        </div>
+                        <div>
+                          <div className="rp-colab-name">{row.user.name}</div>
+                          <div className="rp-colab-code">{row.user.codigoEmpleado}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="rp-td-sec">{row.area}</td>
+                    <td className="rp-td-sec">{row.gerencia}</td>
+                    <td className="rp-td-sec">{row.jefatura}</td>
+                    <td className="rp-td-num rp-td-green">{row.saldo}</td>
+                    <td className="rp-td-num rp-td-orange">{row.pendientes || <span className="rp-td-zero">0</span>}</td>
+                    <td className="rp-td-num rp-td-red">{row.vencidas || <span className="rp-td-zero">0</span>}</td>
+                    <td className="rp-td-num rp-td-blue">{row.planificadas || <span className="rp-td-zero">0</span>}</td>
+                    <td>
+                      <span className={`rp-pill ${STATUS_CLS[row.status]}`}>
+                        <span className="rp-pill-dot"/>
+                        {STATUS_LABEL[row.status]}
+                      </span>
+                    </td>
+                    <td className="rp-td-sec">{fmtDate(row.lastUpdate)}</td>
+                    <td>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="rp-row-arrow">
+                        <path d="M5 3l4 4-4 4" stroke="#bbb" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* ── Mobile cards ── */}
+          <div className="rp-cards-list">
+            {paginated.map(row => (
+              <div key={row.user.id} className={`rp-mob-card rp-mob-card--${row.status}`}>
+                {/* Header: avatar + name + status */}
+                <div className="rp-mob-card-top">
+                  <div className="rp-mob-avatar" style={row.user.photo ? { background: 'transparent', padding: 0, overflow: 'hidden' } : {}}>
+                    {row.user.photo
+                      ? <img src={`${import.meta.env.BASE_URL}${row.user.photo}`} alt={row.user.name} className="rp-avatar-img"/>
+                      : row.user.initials}
+                  </div>
+                  <div className="rp-mob-info">
+                    <div className="rp-mob-name">{row.user.name}</div>
+                    <div className="rp-mob-code">{row.user.codigoEmpleado}</div>
+                  </div>
+                  <div className="rp-mob-right">
+                    <span className={`rp-pill ${STATUS_CLS[row.status]}`}>
+                      <span className="rp-pill-dot"/>
+                      {STATUS_LABEL[row.status]}
+                    </span>
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="rp-mob-arrow">
+                      <path d="M5 3l4 4-4 4" stroke="#ccc" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                </div>
+
+                {/* Metrics row */}
+                <div className="rp-mob-metrics">
+                  <div className="rp-mob-metric">
+                    <span className="rp-mob-m-label">Saldo</span>
+                    <span className="rp-mob-m-val rp-mob-m-val--green">{row.saldo}</span>
+                  </div>
+                  <div className="rp-mob-metric">
+                    <span className="rp-mob-m-label">Pendientes</span>
+                    <span className={`rp-mob-m-val ${row.pendientes > 0 ? 'rp-mob-m-val--orange' : 'rp-mob-m-val--zero'}`}>{row.pendientes}</span>
+                  </div>
+                  <div className="rp-mob-metric">
+                    <span className="rp-mob-m-label">Vencidas</span>
+                    <span className={`rp-mob-m-val ${row.vencidas > 0 ? 'rp-mob-m-val--red' : 'rp-mob-m-val--zero'}`}>{row.vencidas}</span>
+                  </div>
+                  <div className="rp-mob-metric">
+                    <span className="rp-mob-m-label">Planificadas</span>
+                    <span className={`rp-mob-m-val ${row.planificadas > 0 ? 'rp-mob-m-val--blue' : 'rp-mob-m-val--zero'}`}>{row.planificadas}</span>
+                  </div>
+                </div>
+
+                {/* Footer: area + last update */}
+                <div className="rp-mob-footer">
+                  <span className="rp-mob-area">{row.area} · {row.gerencia}</span>
+                  <span className="rp-mob-date">{fmtDate(row.lastUpdate)}</span>
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Pagination */}
-          {filteredRequests.length > PAGE_SIZE && (
-            <div className="rp-pagination">
-              <span className="rp-pagination-info">
-                {Math.min((page-1)*PAGE_SIZE+1, filteredRequests.length)}–
-                {Math.min(page*PAGE_SIZE, filteredRequests.length)} / {filteredRequests.length}
-              </span>
-              <div className="rp-page-btns">
-                <button className="rp-page-arr" disabled={page===1} onClick={() => setPage(p=>p-1)}>‹</button>
-                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => (
-                  <button
-                    key={i+1}
-                    className={`rp-page-num${page===i+1 ? ' rp-page-num--active' : ''}`}
-                    onClick={() => setPage(i+1)}
-                  >{i+1}</button>
-                ))}
-                <button className="rp-page-arr" disabled={page===totalPages} onClick={() => setPage(p=>p+1)}>›</button>
-              </div>
+          <div className="rp-pagination">
+            <div className="rp-pg-info">
+              Mostrando {Math.min((page - 1) * pageSize + 1, filtered.length)} a {Math.min(page * pageSize, filtered.length)} de {filtered.length.toLocaleString()} colaboradores
             </div>
-          )}
-        </aside>
-
-        {/* ════ DETAIL ════════════════════════════════════════ */}
-        <main className="rp-detail">
-
-          {!selected ? (
-            <div className="rp-detail-empty">
-              <div className="rp-detail-empty-icon">📋</div>
-              <p>Selecciona una solicitud para ver el detalle</p>
-            </div>
-          ) : (
-            <>
-              {/* Employee header */}
-              <div className="rp-det-header">
-                <div className="rp-det-emp">
-                  <div
-                    className="rp-det-avatar"
-                    style={{ background: selUser?.photo ? 'transparent' : (AVATAR_COLORS[selected.userRole] ?? '#DA291C'), padding: selUser?.photo ? 0 : undefined, overflow: 'hidden' }}
-                  >
-                    {selUser?.photo
-                      ? <img src={selUser.photo} alt={selected.userName} className="rp-avatar-img" />
-                      : getInitials(selected.userName)}
-                  </div>
-                  <div>
-                    <div className="rp-det-name">{selected.userName}</div>
-                    <div className="rp-det-meta">
-                      {selUser && <>Código: {selUser.codigoEmpleado}&nbsp;·&nbsp;</>}
-                      Área: {selUser?.department ?? ROLE_LABELS[selected.userRole]}
-                    </div>
-                  </div>
-                </div>
-                <div className="rp-det-header-right">
-                  <span className={`ap-status-pill ap-status-pill--${STATUS_TAG[selected.status].cls}`}>
-                    {STATUS_TAG[selected.status].label}
-                  </span>
-                  <span className="rp-det-timestamp">
-                    {fmtRelTime(selected.history.at(-1)?.date ?? '', selected.history.at(-1)?.time)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Vacation card */}
-              <div className="rp-vacation-card">
-                <div className="rp-vc-left">
-                  <div className="rp-vc-title-row">
-                    <div className="rp-vc-cal-icon">📅</div>
-                    <div>
-                      <div className="rp-vc-subtitle">Solicitud de vacaciones</div>
-                      <div className="rp-vc-dates">
-                        {fmtLong(selected.startDate)} –<br />{fmtLong(selected.endDate)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="rp-vc-return">
-                    Retorno al trabajo: <strong>{fmtLong(retDate)}</strong>
-                  </div>
-                </div>
-
-                <div className="rp-vc-stats">
-                  <div className="rp-vc-stat">
-                    <span className="rp-vc-stat-icon">📊</span>
-                    <div>
-                      <span className="rp-vc-stat-lbl">Días solicitados</span>
-                      <span className="rp-vc-stat-val">
-                        {calDays} días calendario
-                        <span className="rp-vc-stat-sub">({selected.days} días laborables)</span>
-                      </span>
-                    </div>
-                  </div>
-                  <div className="rp-vc-stat">
-                    <span className="rp-vc-stat-icon">🏖️</span>
-                    <div>
-                      <span className="rp-vc-stat-lbl">Tipo de vacaciones</span>
-                      <span className="rp-vc-stat-val">Días laborables</span>
-                    </div>
-                  </div>
-                  {selUser && (
-                    <div className="rp-vc-stat">
-                      <span className="rp-vc-stat-icon">💼</span>
-                      <div>
-                        <span className="rp-vc-stat-lbl">Saldo disponible actual</span>
-                        <span className="rp-vc-stat-val">{selUser.vacationBalance} días</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="rp-vc-illustration" aria-hidden="true">🏖️</div>
-              </div>
-
-              {/* Comment + Status-specific panel */}
-              <div className="rp-bottom-row">
-                <div className="rp-panel">
-                  <div className="rp-panel-title">💬 Comentario del colaborador</div>
-                  <p className="rp-panel-body">
-                    {selected.comments ?? (
-                      <em style={{ color: 'var(--wz-text-muted)' }}>Sin comentarios</em>
-                    )}
-                  </p>
-                </div>
-
-                {selected.status === 'rechazado' && rejectionEntry ? (
-                  <div className="rp-panel rp-panel--rejection">
-                    <div className="rp-panel-title">🚫 Motivo de rechazo</div>
-                    <p className="rp-panel-body">
-                      {rejectionEntry.comment ?? 'Sin motivo registrado'}
-                    </p>
-                    <div className="rp-rejection-by">
-                      Por {rejectionEntry.by}
-                      {rejectionEntry.actorRole && ` · ${rejectionEntry.actorRole}`}
-                    </div>
-                  </div>
-                ) : ['aprobado','aprobado_jefe'].includes(selected.status) ? (
-                  <div className="rp-panel rp-panel--success">
-                    <div className="rp-panel-title">✅ Solicitud aprobada</div>
-                    <p className="rp-panel-body">
-                      Aprobada el {fmtShort(getApprovalDate(selected.history))} por{' '}
-                      {selected.history.find(h => ['aprobado','aprobado_jefe'].includes(h.status))?.by ?? '—'}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="rp-panel rp-panel--info">
-                    <div className="rp-panel-title">ℹ️ Estado actual</div>
-                    <p className="rp-panel-body">
-                      {STATUS_LABELS[selected.status]}
-                      {selected.currentApprover && ` · En espera de ${selected.currentApprover}`}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Hint for rejected */}
-              {selected.status === 'rechazado' && (
-                <div className="rp-info-bar">
-                  ℹ️ El colaborador puede crear una nueva solicitud para otras fechas
-                </div>
-              )}
-
-              {/* Collapsible history */}
-              <div className="rp-history-section">
+            <div className="rp-pg-controls">
+              <button className="rp-pg-btn" disabled={page === 1} onClick={() => setPage(p => p - 1)}>‹</button>
+              {Array.from({ length: Math.min(pages, 3) }, (_, i) => (
                 <button
-                  className="rp-history-toggle"
-                  onClick={() => setHistoryOpen(v => !v)}
-                  aria-expanded={historyOpen}
+                  key={i + 1}
+                  className={`rp-pg-btn${page === i + 1 ? ' rp-pg-btn--active' : ''}`}
+                  onClick={() => setPage(i + 1)}
                 >
-                  <span>🕐 Historial completo de la solicitud</span>
-                  <span className={`rp-hist-arrow${historyOpen ? ' rp-hist-arrow--open' : ''}`}>›</span>
+                  {i + 1}
                 </button>
-                {historyOpen && (
-                  <div className="wz-timeline rp-timeline">
-                    {selected.history.map((step, i) => (
-                      <div key={i} className="wz-tl-item">
-                        <div className={`wz-tl-dot ${dotCls(step.status)}`} />
-                        <div className="wz-tl-content">
-                          <div className="wz-tl-header">
-                            <span className="wz-tl-label">{step.label}</span>
-                            <span className="wz-tl-date">{step.date}{step.time && ` · ${step.time}`}</span>
-                          </div>
-                          <div className="wz-tl-by">
-                            {step.by}{step.actorRole && ` (${step.actorRole})`}
-                          </div>
-                          {step.comment && <div className="wz-tl-comment">"{step.comment}"</div>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          {/* ── Insights panel (Manager / Admin GH) ────────────────── */}
-          {showInsights && (riskMonths.length > 0 || balanceAlerts.length > 0) && (
-            <div className="rp-insights">
-              <div className="rp-insights-header">
-                <div className="rp-insights-title">📈 Análisis de impacto organizacional</div>
-                <div className="rp-insights-sub">
-                  Indicadores para la toma de decisiones · {SCOPE_LABELS[scope]}
-                </div>
-              </div>
-
-              <div className="rp-insights-grid">
-                {/* Risk periods */}
-                {riskMonths.length > 0 && (
-                  <div className="rp-insight-card">
-                    <div className="rp-insight-card-title">⚠️ Meses con alta ausencia</div>
-                    <div className="rp-insight-card-sub">
-                      Períodos donde ≥30% del equipo estará ausente
-                    </div>
-                    <div className="rp-risk-months">
-                      {riskMonths.map(({ label, count, pct }) => (
-                        <div key={label} className="rp-risk-row">
-                          <span className="rp-risk-label">{label}</span>
-                          <div className="rp-risk-bar-track">
-                            <div
-                              className="rp-risk-bar-fill"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <span className="rp-risk-count">{count} pers. ({pct}%)</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Balance alerts */}
-                {balanceAlerts.length > 0 && (
-                  <div className="rp-insight-card">
-                    <div className="rp-insight-card-title">⏰ Saldos vencidos a gestionar</div>
-                    <div className="rp-insight-card-sub">
-                      Colaboradores con días de vacaciones vencidos
-                    </div>
-                    <div className="rp-balance-list">
-                      {balanceAlerts.map(u => (
-                        <div key={u.id} className="rp-balance-row">
-                          <div
-                            className="rp-balance-avatar"
-                            style={{ background: u.photo ? 'transparent' : (AVATAR_COLORS[u.role] ?? '#DA291C'), padding: u.photo ? 0 : undefined, overflow: 'hidden' }}
-                          >
-                            {u.photo
-                              ? <img src={u.photo} alt={u.name} className="rp-avatar-img" />
-                              : u.initials}
-                          </div>
-                          <div className="rp-balance-info">
-                            <span className="rp-balance-name">{u.name}</span>
-                            <span className="rp-balance-dept">{u.department}</span>
-                          </div>
-                          <div className="rp-balance-badge">
-                            {u.vacationBalanceVencidas}d
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Utilization summary */}
-                <div className="rp-insight-card rp-insight-card--utilization">
-                  <div className="rp-insight-card-title">📊 Resumen de utilización</div>
-                  <div className="rp-insight-card-sub">Scope: {scopedUsers.length} colaboradores</div>
-                  <div className="rp-util-stats">
-                    <div className="rp-util-stat">
-                      <span className="rp-util-num" style={{ color: '#188918' }}>{counts.aprobadas}</span>
-                      <span className="rp-util-lbl">Aprobadas</span>
-                    </div>
-                    <div className="rp-util-stat">
-                      <span className="rp-util-num" style={{ color: '#e76500' }}>{counts.pendientes}</span>
-                      <span className="rp-util-lbl">Pendientes</span>
-                    </div>
-                    <div className="rp-util-stat">
-                      <span className="rp-util-num" style={{ color: 'var(--wz-error)' }}>{counts.rechazadas}</span>
-                      <span className="rp-util-lbl">Rechazadas</span>
-                    </div>
-                    <div className="rp-util-stat">
-                      <span className="rp-util-num" style={{ color: 'var(--wz-primary)' }}>{kpis.diasAprobados}</span>
-                      <span className="rp-util-lbl">Días aprobados</span>
-                    </div>
-                    <div className="rp-util-stat">
-                      <span className="rp-util-num">{kpis.saldoPromedio}</span>
-                      <span className="rp-util-lbl">Saldo promedio</span>
-                    </div>
-                    <div className="rp-util-stat">
-                      <span className="rp-util-num" style={{ color: kpis.vencidosAlerta > 0 ? 'var(--wz-error)' : '#188918' }}>
-                        {kpis.vencidosAlerta}
-                      </span>
-                      <span className="rp-util-lbl">Saldos vencidos</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              ))}
+              {pages > 4 && <span className="rp-pg-dots">…</span>}
+              {pages > 3 && (
+                <button
+                  className={`rp-pg-btn${page === pages ? ' rp-pg-btn--active' : ''}`}
+                  onClick={() => setPage(pages)}
+                >
+                  {pages}
+                </button>
+              )}
+              <button className="rp-pg-btn" disabled={page === pages} onClick={() => setPage(p => p + 1)}>›</button>
+              <select
+                className="rp-pg-size"
+                value={pageSize}
+                onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
+              >
+                {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
             </div>
-          )}
-        </main>
+          </div>
+        </div>
       </div>
-    </div>
+    </SpacePage>
   );
 };
+
+/* Sort icon helper */
+const SortIcon: React.FC<{ col: string; sortCol: string | null; sortAsc: boolean }> = ({ col, sortCol, sortAsc }) => (
+  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginLeft: 4, opacity: sortCol === col ? 1 : 0.3, flexShrink: 0 }}>
+    {sortCol === col && !sortAsc
+      ? <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+      : <path d="M2 6.5l3-3 3 3"  stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    }
+  </svg>
+);
 
 export default ReportesVacaciones;
