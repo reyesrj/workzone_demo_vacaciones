@@ -8,6 +8,7 @@ import SolicitudVacaciones from '../pages/SolicitudVacaciones';
 import MisSolicitudes from '../pages/MisSolicitudes';
 import AprobacionVacaciones from '../pages/AprobacionVacaciones';
 import ReportesVacaciones from '../pages/ReportesVacaciones';
+import Trazabilidad from '../pages/Trazabilidad';
 import '../styles/workzone.css';
 
 /* ------------------------------------------------------------------ */
@@ -137,8 +138,15 @@ const WorkZoneShell: React.FC<Props> = ({ user, onLogout }) => {
           />
         );
       case 'reporte-vacaciones':
-      case 'trazabilidad':
         return <ReportesVacaciones user={user} requests={requests} />;
+      case 'trazabilidad':
+        return (
+          <Trazabilidad
+            user={user}
+            requests={requests}
+            onNavigate={navigateTo}
+          />
+        );
       default:
         return (
           <HomePage
@@ -170,7 +178,11 @@ const WorkZoneShell: React.FC<Props> = ({ user, onLogout }) => {
                 style={{ height: "24px" }}
               />
             <div className="wz-header-app-separator" />
-            <span className="wz-header-app-name">Portal de Vacaciones</span>
+            <span className="wz-header-app-name">
+              {currentPageId === 'trazabilidad'
+                ? 'Trazabilidad de Vacaciones'
+                : 'Portal de Vacaciones'}
+            </span>
           </div>
         </div>
 

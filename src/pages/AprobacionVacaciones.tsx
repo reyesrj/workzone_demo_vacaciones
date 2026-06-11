@@ -100,8 +100,7 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
   const [comment,      setComment]      = useState('');
   const [bulkComment,  setBulkComment]  = useState('');
   const [commentErr,   setCommentErr]   = useState('');
-  const [filtersOpen,  setFiltersOpen]  = useState(false);
-  const [mobileView,   setMobileView]   = useState<'master' | 'detail'>('master');
+  const [mobileListOpen, setMobileListOpen] = useState(false);
 
   /* ---- sync filter when mode prop changes ------------------------- */
   useEffect(() => {
@@ -214,6 +213,8 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
     ? (requests.find((r) => r.id === selectedId) ?? filtered[0] ?? null)
     : (filtered[0] ?? null);
 
+  const mobileShowList = mobileListOpen || !selected;
+
   const collaborator = selected ? USERS.find((u) => u.id === selected.userId) : null;
   const calDays  = selected ? countCalDays(selected.startDate, selected.endDate) : 0;
   const workDays = selected?.days ?? 0;
@@ -267,25 +268,21 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
   /*  Render                                                          */
   /* ---------------------------------------------------------------- */
   return (
-    <div className={`ap-page ap-page--mob-${mobileView}`}>
+    <div className="ap-page">
 
       {/* ═══════════════ MASTER — left panel ══════════════════════ */}
       <aside className="ap-master">
-
-        {/* ── Mobile-only top bar ── */}
-        <div className="ap-mob-header">
-          <button className="ap-mob-menu-btn" aria-label="Menú">
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path d="M2 4.5h14M2 9h14M2 13.5h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-            </svg>
-          </button>
-          <span className="ap-mob-header-title">Aprobación de vacaciones</span>
-          <button className="ap-mob-filter-top-btn" aria-label="Filtrar"
-            onClick={() => setFiltersOpen(o => !o)}>
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path d="M3 5h12M6 9h6M8 13h2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-            </svg>
-          </button>
+        <div className="ap-master-header">
+          {mobileListOpen && selected && (
+            <button
+              type="button"
+              className="ap-master-back"
+              onClick={() => setMobileListOpen(false)}
+            >
+              ← Volver al detalle
+            </button>
+          )}
+          <h2 className="ap-master-title">Mis solicitudes para tu aprobación</h2>
         </div>
 
         {/* ── Tabs: Pendientes / Historial ── */}
@@ -421,11 +418,14 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
               return (
                 <div
                   key={req.id}
-                  className={`ap-list-item${isActive ? ' ap-list-item--active' : ''}${isChecked ? ' ap-list-item--checked' : ''}`}
-                  onClick={() => { setSelectedId(req.id); setMobileView('detail'); }}
+                  className={`ap-item${isActive ? ' ap-item--active' : ''}`}
+                  onClick={() => {
+                    setSelectedId(req.id);
+                    setMobileListOpen(false);
+                  }}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={e => e.key === 'Enter' && (setSelectedId(req.id), setMobileView('detail'))}
+                  onKeyDown={(e) => e.key === 'Enter' && setSelectedId(req.id)}
                 >
                   {/* Checkbox – only for pendientes tab */}
                   {masterTab === 'pendientes' && isPend && (
@@ -531,56 +531,27 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
             </div>
             <p>Selecciona una solicitud para ver el detalle</p>
           </div>
-        ) : (() => {
-          const isRotativo   = selected.userRole === 'colaborador_rotativo';
-          const hasVencidas  = (collaborator?.vacationBalanceVencidas ?? 0) > 0;
-          const tag          = STATUS_TAG[selected.status];
+        ) : (
+          <>
+            {/* Mobile: toggle list (SAP master-detail) */}
+            <div className="ap-detail-toolbar">
+              <button
+                type="button"
+                className="ap-mobile-list-btn"
+                onClick={() => setMobileListOpen(true)}
+                aria-label="Ver lista de solicitudes"
+              >
+                <span className="ap-mobile-list-btn-icon" aria-hidden="true">☰</span>
+                Ver solicitudes
+                {counts[activeFilter] > 0 && (
+                  <span className="ap-mobile-list-badge">{counts[activeFilter]}</span>
+                )}
+              </button>
+            </div>
 
-          /* ── Approval flow data ── */
-          const lvl1User  = collaborator?.managerId ? USERS.find(u => u.id === collaborator!.managerId) : null;
-          const lvl2User  = isRotativo ? USERS.find(u => u.role === 'administrador_gh') : null;
-
-          const lvl1Done  = ['aprobado_jefe','pendiente_gh','aprobado','rechazado'].includes(selected.status);
-          const lvl1Stat  = selected.status === 'rechazado' && !['pendiente_gh','aprobado'].includes(selected.status)
-            ? 'rechazado'
-            : lvl1Done ? 'aprobado' : 'pendiente';
-          const lvl2Stat  = selected.status === 'aprobado' ? 'aprobado'
-            : selected.status === 'rechazado' && ['pendiente_gh'].includes(selected.status) ? 'rechazado'
-            : 'pendiente';
-
-          const lvl1Entry = selected.history.find(h => ['aprobado_jefe','aprobado'].includes(h.status as string));
-          const lvl2Entry = selected.history.find(h => h.status === 'aprobado' && isRotativo);
-
-          const vacType = isRotativo ? 'Vacaciones días rotativos' : 'Vacaciones días útiles';
-
-          return (
-            <>
-              {/* ── Top bar: título + Delegación ── */}
-              <div className="ap-det-topbar">
-                <button
-                  className="ap-mob-back-btn"
-                  aria-label="Volver a la lista"
-                  onClick={() => setMobileView('master')}
-                >
-                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                    <path d="M11 14l-6-5 6-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-                <span className="ap-det-topbar-title">Detalle de la solicitud</span>
-                <button className="ap-delegation-btn">
-                  <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-                    <circle cx="6" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
-                    <path d="M1 13c0-2.76 2.24-5 5-5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                    <circle cx="12" cy="9" r="2" stroke="currentColor" strokeWidth="1.3"/>
-                    <path d="M9 14c0-1.66 1.34-3 3-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                    <path d="M14.5 7.5l-2-2-2 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  Delegación
-                </button>
-              </div>
-
-              {/* ── Employee header ── */}
-              <div className="ap-det-emp-card">
+            {/* Employee header */}
+            <div className="ap-det-header">
+              <div className="ap-det-emp">
                 <div
                   className="ap-det-emp-avatar"
                   style={collaborator?.photo ? { background: 'transparent', padding: 0, overflow: 'hidden' } : { background: AVATAR_COLORS[selected.userRole] ?? '#DA291C' }}
