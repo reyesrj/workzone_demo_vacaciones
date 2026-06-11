@@ -270,7 +270,7 @@ const HomePage: React.FC<HomePageProps> = ({ user, requests, allRequests, onNavi
                 badge={pendingAnulacionCount} onClick={() => onNavigate('gestion-anulaciones', 'aprobaciones')} />
               <QuickTile icon="📊" title="Reportes" accent="#009A99" bg="#E0F7FA"
                 onClick={() => onNavigate('reporte-vacaciones', 'reportes')} />
-              <QuickTile icon="🔍" title="Trazabilidad" accent="#6b3fa0" bg="#f3eaff"
+              <QuickTile icon="🔍" title="Trazabilidad de Vacaciones" accent="#6b3fa0" bg="#f3eaff"
                 onClick={() => onNavigate('trazabilidad', 'reportes')} />
             </div>
           </Ui5Card>
@@ -344,7 +344,7 @@ const HomePage: React.FC<HomePageProps> = ({ user, requests, allRequests, onNavi
               badge={pendingApprovalCount} onClick={() => onNavigate('solicitudes-pendientes', 'aprobaciones')} />
             <QuickTile icon="📊" title="Reportes Globales" accent="#009A99" bg="#E0F7FA"
               onClick={() => onNavigate('reporte-vacaciones', 'reportes')} />
-            <QuickTile icon="🔍" title="Trazabilidad" accent="#6b3fa0" bg="#f3eaff"
+            <QuickTile icon="🔍" title="Trazabilidad de Vacaciones" accent="#6b3fa0" bg="#f3eaff"
               onClick={() => onNavigate('trazabilidad', 'reportes')} />
           </div>
         </Ui5Card>

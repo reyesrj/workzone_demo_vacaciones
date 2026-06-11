@@ -93,6 +93,8 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
   const [showAction,   setShowAction]   = useState<'approve' | 'reject' | null>(null);
   const [comment,      setComment]      = useState('');
   const [commentErr,   setCommentErr]   = useState('');
+  const [mobileListOpen, setMobileListOpen] = useState(false);
+
   /* ---- sync filter when mode prop changes ------------------------- */
   useEffect(() => {
     setActiveFilter(mode === 'anulaciones' ? 'anulaciones' : 'pendientes');
@@ -163,6 +165,8 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
     ? (requests.find((r) => r.id === selectedId) ?? filtered[0] ?? null)
     : (filtered[0] ?? null);
 
+  const mobileShowList = mobileListOpen || !selected;
+
   const collaborator = selected ? USERS.find((u) => u.id === selected.userId) : null;
   const calDays  = selected ? countCalDays(selected.startDate, selected.endDate) : 0;
   const workDays = selected?.days ?? 0;
@@ -216,11 +220,20 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
   /*  Render                                                          */
   /* ---------------------------------------------------------------- */
   return (
-    <div className="ap-page">
+    <div className={`ap-page${mobileShowList ? ' ap-page--mobile-list' : ' ap-page--mobile-detail'}`}>
 
       {/* ═══════════════ MASTER — left panel ══════════════════════ */}
       <aside className="ap-master">
         <div className="ap-master-header">
+          {mobileListOpen && selected && (
+            <button
+              type="button"
+              className="ap-master-back"
+              onClick={() => setMobileListOpen(false)}
+            >
+              ← Volver al detalle
+            </button>
+          )}
           <h2 className="ap-master-title">Mis solicitudes para tu aprobación</h2>
         </div>
 
@@ -281,10 +294,18 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
                 <div
                   key={req.id}
                   className={`ap-item${isActive ? ' ap-item--active' : ''}`}
-                  onClick={() => setSelectedId(req.id)}
+                  onClick={() => {
+                    setSelectedId(req.id);
+                    setMobileListOpen(false);
+                  }}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={(e) => e.key === 'Enter' && setSelectedId(req.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      setSelectedId(req.id);
+                      setMobileListOpen(false);
+                    }
+                  }}
                 >
                   <div className="ap-item-top">
                     <div
@@ -360,6 +381,22 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
           </div>
         ) : (
           <>
+            {/* Mobile: toggle list (SAP master-detail) */}
+            <div className="ap-detail-toolbar">
+              <button
+                type="button"
+                className="ap-mobile-list-btn"
+                onClick={() => setMobileListOpen(true)}
+                aria-label="Ver lista de solicitudes"
+              >
+                <span className="ap-mobile-list-btn-icon" aria-hidden="true">☰</span>
+                Ver solicitudes
+                {counts[activeFilter] > 0 && (
+                  <span className="ap-mobile-list-badge">{counts[activeFilter]}</span>
+                )}
+              </button>
+            </div>
+
             {/* Employee header */}
             <div className="ap-det-header">
               <div className="ap-det-emp">
