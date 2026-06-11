@@ -33,21 +33,6 @@ const SPACES: SpaceDef[] = [
       { id: 'inicio', label: 'Inicio' },
     ],
   },
-  {
-    id: 'aprobaciones',
-    label: 'Aprobaciones',
-    roles: ['jefe_aprobador', 'administrador_gh'],
-    pages: [
-      { id: 'solicitudes-pendientes', label: 'Solicitudes Pendientes' },
-      { id: 'gestion-anulaciones', label: 'Gestión de Anulaciones' },
-    ],
-  },
-  {
-    id: 'reportes',
-    label: 'Reportes',
-    roles: ['jefe_aprobador', 'administrador_gh'],
-    pages: [],
-  },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -74,7 +59,7 @@ const SPACE_ICONS: Record<SpaceId, string> = {
 interface Props { user: User; onLogout: () => void }
 
 const WorkZoneShell: React.FC<Props> = ({ user, onLogout }) => {
-  const { requests, addRequest, updateStatus } = useVacationRequests();
+  const { requests, addRequest, updateStatus, updateRequest } = useVacationRequests();
 
   const visibleSpaces = SPACES.filter((s) => s.roles.includes(user.role));
   const [currentSpaceId, setCurrentSpaceId] = useState<SpaceId>(visibleSpaces[0].id);
@@ -84,7 +69,10 @@ const WorkZoneShell: React.FC<Props> = ({ user, onLogout }) => {
   const currentSpace = visibleSpaces.find((s) => s.id === currentSpaceId)!;
 
   const navigateTo: NavigateFn = (pageId, spaceId) => {
-    if (spaceId) setCurrentSpaceId(spaceId);
+    if (spaceId) {
+      const valid = visibleSpaces.find((s) => s.id === spaceId);
+      if (valid) setCurrentSpaceId(spaceId);
+    }
     setCurrentPageId(pageId);
   };
 
@@ -111,17 +99,23 @@ const WorkZoneShell: React.FC<Props> = ({ user, onLogout }) => {
         return (
           <SolicitudVacaciones
             user={user}
+            requests={myRequests}
             onAddRequest={addRequest}
+            onUpdateStatus={updateStatus}
+            onUpdateRequest={updateRequest}
             onNavigate={navigateTo}
           />
         );
       case 'mis-solicitudes':
         return (
-          <MisSolicitudes
+          <SolicitudVacaciones
             user={user}
             requests={myRequests}
+            onAddRequest={addRequest}
             onUpdateStatus={updateStatus}
+            onUpdateRequest={updateRequest}
             onNavigate={navigateTo}
+            initialTab="mis"
           />
         );
       case 'solicitudes-pendientes':

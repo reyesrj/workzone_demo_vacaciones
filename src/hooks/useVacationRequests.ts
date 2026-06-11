@@ -66,7 +66,16 @@ export const useVacationRequests = () => {
     );
   };
 
-  return { requests, addRequest, updateStatus };
+  const updateRequest = (
+    id: string,
+    updates: { startDate: string; endDate: string; days: number }
+  ) => {
+    setRequests((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, ...updates } : r))
+    );
+  };
+
+  return { requests, addRequest, updateStatus, updateRequest };
 };
 
 export type UseVacationRequestsReturn = ReturnType<typeof useVacationRequests>;
