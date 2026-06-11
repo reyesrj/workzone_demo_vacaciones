@@ -73,17 +73,17 @@ export interface VacationRequest {
 }
 
 export const INITIAL_REQUESTS: VacationRequest[] = [
-  // VR-001: Ana García (Standard) — pendiente_jefe
+  // VR-001: Ana García (Standard) — pendiente_jefe (período corto: 2 días laborables)
   {
     id: 'VR-001',
     userId: 'u1',
     userName: 'Ana García',
     userRole: 'colaborador_standard',
-    startDate: '2026-07-01',
-    endDate: '2026-07-10',
-    days: 8,
+    startDate: '2026-05-28',
+    endDate: '2026-05-30',
+    days: 2,
     status: 'pendiente_jefe',
-    comments: 'Vacaciones de verano planificadas',
+    comments: 'Viaje familiar programado desde hace meses. Agradezco su apoyo.',
     currentApprover: 'María López',
     history: [
       { status: 'creado', label: 'Solicitud creada', by: 'Ana García', actorRole: 'Colaborador Standard', date: '2026-06-01', time: '09:15' },
