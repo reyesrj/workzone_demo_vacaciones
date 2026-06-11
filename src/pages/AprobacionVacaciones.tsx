@@ -68,13 +68,6 @@ const STATUS_TAG: Record<RequestStatus, { label: string; cls: string }> = {
   anulacion_rechazada:  { label: 'Anul. rechazada', cls: 'error'   },
 };
 
-const dotCls = (s: RequestStatus) => {
-  if (s === 'aprobado' || s === 'aprobado_jefe') return 'success';
-  if (['rechazado','anulado','anulacion_rechazada'].includes(s)) return 'error';
-  if (['pendiente_jefe','pendiente_gh','pendiente_anulacion'].includes(s)) return 'warning';
-  return 'info';
-};
-
 /* ------------------------------------------------------------------ */
 /*  Component                                                           */
 /* ------------------------------------------------------------------ */
@@ -100,8 +93,6 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
   const [showAction,   setShowAction]   = useState<'approve' | 'reject' | null>(null);
   const [comment,      setComment]      = useState('');
   const [commentErr,   setCommentErr]   = useState('');
-  const [historyOpen,  setHistoryOpen]  = useState(false);
-
   /* ---- sync filter when mode prop changes ------------------------- */
   useEffect(() => {
     setActiveFilter(mode === 'anulaciones' ? 'anulaciones' : 'pendientes');
@@ -194,15 +185,13 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
     );
   }, [selected, requests]);
 
-  /* ---- smart suggestion ------------------------------------------- */
-  const suggestion = useMemo(() => {
-    if (!selected) return null;
-    if (workDays <= 2)
-      return `El colaborador está solicitando un período muy corto (solo ${workDays} días laborables). Recomendación: Evaluar si requiere más días para su descanso.`;
-    if (teamImpact.length >= 2)
-      return `Hay ${teamImpact.length} personas del equipo ausentes en las mismas fechas. Revise el impacto operacional antes de aprobar.`;
-    return null;
-  }, [selected, workDays, teamImpact]);
+  const isShortPeriod = selected != null && workDays > 0 && workDays <= 2;
+
+  /* ---- team impact warning (independent from short-period alert) -- */
+  const teamImpactWarning = useMemo(() => {
+    if (!selected || teamImpact.length < 2) return null;
+    return `Hay ${teamImpact.length} personas del equipo ausentes en las mismas fechas. Revise el impacto operacional antes de aprobar.`;
+  }, [selected, teamImpact]);
 
   /* ---- action handlers -------------------------------------------- */
   const handleApprove = () => {
@@ -362,6 +351,7 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
       </aside>
 
       {/* ═══════════════ DETAIL — right panel ═════════════════════ */}
+      <div className="ap-detail-column">
       <main className="ap-detail">
         {!selected ? (
           <div className="ap-detail-empty">
@@ -454,33 +444,10 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
               <div className="ap-vc-illustration" aria-hidden="true">🏖️</div>
             </div>
 
-            {/* Smart suggestion */}
-            {suggestion && (
-              <div className="ap-suggestion">
-                <span className="ap-suggestion-icon">⚠️</span>
-                <span className="ap-suggestion-text">
-                  <strong>Sugerencia:</strong> {suggestion}
-                </span>
-                <button className="ap-suggestion-link">ℹ️ Ver política</button>
-              </div>
-            )}
-
-            {/* Comment + Team impact */}
-            <div className="ap-bottom-row">
-              {/* Collaborator comment */}
-              <div className="ap-panel ap-comment-panel">
-                <div className="ap-panel-title">
-                  <span>💬</span> Comentario del colaborador
-                </div>
-                <p className="ap-comment-text">
-                  {selected.comments ?? (
-                    <em style={{ color: 'var(--wz-text-muted)' }}>Sin comentarios</em>
-                  )}
-                </p>
-              </div>
-
-              {/* Team impact */}
-              <div className="ap-panel ap-impact-panel">
+            {/* Contextual sections — reorderable on mobile */}
+            <div className="ap-detail-sections">
+              {/* Team impact — first on mobile */}
+              <div className="ap-panel ap-impact-panel ap-section-impact">
                 <div className="ap-panel-title">
                   <span>👥</span> Impacto en el equipo
                 </div>
@@ -510,70 +477,116 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
                     <p className="ap-impact-count">
                       <strong>{teamImpact.length}</strong> persona(s) estarán ausentes en esas fechas
                     </p>
-                    <button className="ap-calendar-link">
+                    <button type="button" className="ap-calendar-link">
                       📅 Ver calendario del equipo
                     </button>
                   </>
                 )}
               </div>
-            </div>
 
-            {/* Collapsible history */}
-            <div className="ap-history-section">
-              <button
-                className="ap-history-toggle"
-                onClick={() => setHistoryOpen((v) => !v)}
-                aria-expanded={historyOpen}
-              >
-                <span>🕐 Historial de la solicitud</span>
-                <span className={`ap-history-arrow${historyOpen ? ' ap-history-arrow--open' : ''}`}>›</span>
-              </button>
-
-              {historyOpen && (
-                <div className="wz-timeline ap-timeline">
-                  {selected.history.map((step, i) => (
-                    <div key={i} className="wz-tl-item">
-                      <div className={`wz-tl-dot ${dotCls(step.status)}`} />
-                      <div className="wz-tl-content">
-                        <div className="wz-tl-header">
-                          <span className="wz-tl-label">{step.label}</span>
-                          <span className="wz-tl-date">
-                            {step.date}{step.time ? ` · ${step.time}` : ''}
-                          </span>
-                        </div>
-                        <div className="wz-tl-by">
-                          {step.by}{step.actorRole ? ` (${step.actorRole})` : ''}
-                        </div>
-                        {step.comment && (
-                          <div className="wz-tl-comment">"{step.comment}"</div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+              {/* Short-period warning — second on mobile */}
+              {isShortPeriod && (
+                <div
+                  className="ap-message-strip ap-message-strip--warning ap-section-suggestion"
+                  role="alert"
+                  aria-live="polite"
+                >
+                  <span className="ap-message-strip-icon" aria-hidden="true">⚠️</span>
+                  <div className="ap-message-strip-body">
+                    <p className="ap-message-strip-title">
+                      <strong>Sugerencia:</strong> El colaborador está solicitando un período muy corto
+                      (solo{' '}
+                      <strong>
+                        {workDays} {workDays === 1 ? 'día laborable' : 'días laborables'}
+                      </strong>
+                      ).
+                    </p>
+                    <p className="ap-message-strip-desc">
+                      Recomendación: Evaluar si requiere más días para su descanso.
+                    </p>
+                  </div>
+                  <button type="button" className="ap-message-strip-action">
+                    <span aria-hidden="true">ℹ️</span>
+                    Ver política
+                  </button>
                 </div>
               )}
+
+              {teamImpactWarning && (
+                <div
+                  className="ap-message-strip ap-message-strip--warning ap-section-team-warning"
+                  role="alert"
+                  aria-live="polite"
+                >
+                  <span className="ap-message-strip-icon" aria-hidden="true">⚠️</span>
+                  <div className="ap-message-strip-body">
+                    <p className="ap-message-strip-title">
+                      <strong>Atención:</strong> {teamImpactWarning}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Collaborator comment — last on mobile */}
+              <div className="ap-panel ap-comment-panel ap-section-comment">
+                <div className="ap-panel-title">
+                  <span>💬</span> Comentario del colaborador
+                </div>
+                <div className="ap-comment-box">
+                  <p className="ap-comment-text">
+                    {selected.comments ?? (
+                      <span className="ap-comment-empty">Sin comentarios</span>
+                    )}
+                  </p>
+                </div>
+              </div>
             </div>
 
-            {/* Action buttons */}
-            {isPending && (
-              <div className="ap-action-bar">
-                <button
-                  className="ap-btn-reject"
-                  onClick={() => { setShowAction('reject'); setComment(''); setCommentErr(''); }}
-                >
-                  ✕&nbsp; {isAnnulMode ? 'Rechazar anulación' : 'Rechazar'}
-                </button>
-                <button
-                  className="ap-btn-approve"
-                  onClick={() => { setShowAction('approve'); setComment(''); setCommentErr(''); }}
-                >
-                  ✓&nbsp; {isAnnulMode ? 'Confirmar anulación' : 'Aprobar'}
-                </button>
-              </div>
-            )}
           </>
         )}
       </main>
+
+      {isPending && selected && (
+        <div className="ap-bottom-bar" role="toolbar" aria-label="Acciones de aprobación">
+          <div className="ap-bottom-info">
+            <span className="ap-bottom-info-icon" aria-hidden="true">ℹ️</span>
+            <span>
+              {isAnnulMode ? (
+                <>
+                  Revisa la solicitud de anulación de{' '}
+                  <strong>{selected.userName}</strong> antes de confirmar o rechazar.
+                  El colaborador será notificado por correo y en el centro de tareas.
+                </>
+              ) : (
+                <>
+                  Revisa el detalle de la solicitud de{' '}
+                  <strong>{selected.userName}</strong> antes de tomar una decisión.
+                  El colaborador será notificado por correo y en el centro de tareas.
+                </>
+              )}
+            </span>
+          </div>
+          <div className="ap-bottom-actions">
+            <button
+              type="button"
+              className="ap-btn-reject"
+              onClick={() => { setShowAction('reject'); setComment(''); setCommentErr(''); }}
+            >
+              <span aria-hidden="true">✕</span>
+              {isAnnulMode ? 'Rechazar anulación' : 'Rechazar'}
+            </button>
+            <button
+              type="button"
+              className="ap-btn-approve"
+              onClick={() => { setShowAction('approve'); setComment(''); setCommentErr(''); }}
+            >
+              <span aria-hidden="true">✓</span>
+              {isAnnulMode ? 'Confirmar anulación' : 'Aprobar'}
+            </button>
+          </div>
+        </div>
+      )}
+      </div>
 
       {/* ═══════════════ MOBILE NAV BAR ═══════════════════════════ */}
       <nav className="ap-mob-nav" aria-label="Navegación aprobación">
@@ -587,15 +600,6 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
             <span className="ap-mob-nav-badge">{counts.pendientes}</span>
           )}
           <span className="ap-mob-nav-label">Pendientes</span>
-        </button>
-
-        {/* Historial */}
-        <button
-          className="ap-mob-nav-btn"
-          onClick={() => setHistoryOpen((v) => !v)}
-        >
-          <span className="ap-mob-nav-icon">📋</span>
-          <span className="ap-mob-nav-label">Historial</span>
         </button>
 
         {/* FAB — Aprobar (primary action) */}
