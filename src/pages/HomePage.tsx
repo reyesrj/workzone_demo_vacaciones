@@ -174,7 +174,7 @@ const HeroColaborador: React.FC<{ user: User }> = ({ user }) => {
   );
 };
 
-const HeroJefe: React.FC<{ user: User }> = ({ user }) => {
+const HeroJefe: React.FC<{ user: User; pendingCount: number }> = ({ user, pendingCount }) => {
   const firstName = user.name.split(' ')[0];
   return (
     <div className="hp-hero hp-hero--jefe">
@@ -182,7 +182,7 @@ const HeroJefe: React.FC<{ user: User }> = ({ user }) => {
         <div className="hp-hero-greeting">Hola, {firstName} 👋</div>
         <div className="hp-hero-sub">Desde aquí puedes gestionar solicitudes de vacaciones de tu equipo.</div>
         <div className="hp-hero-tags">
-          <span className="hp-hero-tag hp-hero-tag--pattern">
+          <span className="hp-hero-tag hp-hero-tag--jefe">
             <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
               <circle cx="5" cy="4" r="2.5" stroke="currentColor" strokeWidth="1.2"/>
               <path d="M1 12c0-2.21 1.79-4 4-4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
@@ -194,13 +194,28 @@ const HeroJefe: React.FC<{ user: User }> = ({ user }) => {
         </div>
       </div>
       <div className="hp-hero-right">
-        <div className="hp-hero-illus hp-hero-illus--right"><BeachIllus /></div>
+        <div className="hp-hero-mgmt-card hp-hero-mgmt-card--jefe">
+          <div className="hp-hero-mgmt-text">
+            <div className="hp-hero-mgmt-label">Pendientes de aprobación</div>
+            <div className="hp-hero-mgmt-num hp-hero-mgmt-num--blue">{pendingCount}</div>
+            <div className="hp-hero-mgmt-sub">
+              {pendingCount === 1 ? 'solicitud de tu equipo' : 'solicitudes de tu equipo'}
+            </div>
+          </div>
+          <div
+            className="hp-hero-mgmt-illus"
+            style={{ backgroundImage: `url(${import.meta.env.BASE_URL}hero-beach-bg.png)` }}
+            aria-hidden="true"
+          />
+        </div>
       </div>
     </div>
   );
 };
 
-const HeroAdmin: React.FC<{ user: User }> = ({ user }) => {
+const HeroAdmin: React.FC<{ user: User; pendingCount: number; colaboradoresCount: number }> = ({
+  user, pendingCount, colaboradoresCount,
+}) => {
   const firstName = user.name.split(' ')[0];
   return (
     <div className="hp-hero hp-hero--admin">
@@ -208,7 +223,7 @@ const HeroAdmin: React.FC<{ user: User }> = ({ user }) => {
         <div className="hp-hero-greeting">Hola, {firstName} 👋</div>
         <div className="hp-hero-sub">Bienvenido al panel de administración de vacaciones.</div>
         <div className="hp-hero-tags">
-          <span className="hp-hero-tag hp-hero-tag--pattern">
+          <span className="hp-hero-tag hp-hero-tag--admin">
             <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
               <path d="M7 1.5l1.8 3.6 4 .6-2.9 2.8.7 4L7 10.4l-3.6 1.9.7-4L1.2 5.7l4-.6z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
             </svg>
@@ -217,7 +232,21 @@ const HeroAdmin: React.FC<{ user: User }> = ({ user }) => {
         </div>
       </div>
       <div className="hp-hero-right">
-        <div className="hp-hero-illus hp-hero-illus--right"><BeachIllus /></div>
+        <div className="hp-hero-mgmt-card hp-hero-mgmt-card--admin">
+          <div className="hp-hero-mgmt-text">
+            <div className="hp-hero-mgmt-label">Colaboradores activos</div>
+            <div className="hp-hero-mgmt-num hp-hero-mgmt-num--purple">{colaboradoresCount}</div>
+            <div className="hp-hero-mgmt-sub">en el portal de vacaciones</div>
+            {pendingCount > 0 && (
+              <div className="hp-hero-mgmt-badge">{pendingCount} por aprobar GH</div>
+            )}
+          </div>
+          <div
+            className="hp-hero-mgmt-illus"
+            style={{ backgroundImage: `url(${import.meta.env.BASE_URL}hero-beach-bg.png)` }}
+            aria-hidden="true"
+          />
+        </div>
       </div>
     </div>
   );
@@ -352,7 +381,7 @@ const HomePage: React.FC<HomePageProps> = ({ user, requests, allRequests, onNavi
   if (isJefe) {
     return (
       <div className="hp-wrap">
-        <HeroJefe user={user} />
+        <HeroJefe user={user} pendingCount={pendingApprovalCount} />
 
         {/* ── Pending alert banner ──────────────────────────────── */}
         {pendingApprovalCount > 0 && (
@@ -433,7 +462,11 @@ const HomePage: React.FC<HomePageProps> = ({ user, requests, allRequests, onNavi
      ================================================================ */
   return (
     <div className="hp-wrap">
-      <HeroAdmin user={user} />
+      <HeroAdmin
+        user={user}
+        pendingCount={pendingApprovalCount}
+        colaboradoresCount={colaboradoresCount}
+      />
 
       {/* ── Global KPI strip ──────────────────────────────────── */}
       <div className="hp-global-kpis">
@@ -526,7 +559,7 @@ const HomePage: React.FC<HomePageProps> = ({ user, requests, allRequests, onNavi
           }
           ctaLabel="Ingresar"
           ctaVariant="purple"
-          onClick={() => onNavigate('reporte-vacaciones', 'reportes')}
+          onClick={() => onNavigate('trazabilidad')}
         />
         <AppCard
           imgNode={<ReporteIcon />}

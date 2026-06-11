@@ -234,8 +234,7 @@ const ReportesVacaciones: React.FC<Props> = ({ user, requests }) => {
         {/* ════════ PAGE TITLE ════════ */}
         <div className="rp-page-title-row">
           <div>
-            <div className="wz-breadcrumb">Mis Vacaciones › Reportes</div>
-            <h2 className="wz-page-heading">Trazabilidad de vacaciones</h2>
+    
           </div>
           <button className="rp-export-btn">
             <svg width="15" height="15" viewBox="0 0 16 16" fill="none">

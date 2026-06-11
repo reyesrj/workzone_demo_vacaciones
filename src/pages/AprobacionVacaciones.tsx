@@ -54,8 +54,17 @@ const AVATAR_COLORS: Record<string, string> = {
   administrador_gh:     '#6b3fa0',
 };
 
-type FilterTab  = 'pendientes' | 'aprobadas' | 'rechazadas' | 'anulaciones';
+type FilterTab  = 'todas' | 'por_aprobar' | 'anulacion_pend' | 'aprobadas' | 'rechazadas' | 'anulaciones';
 type MasterTab  = 'pendientes' | 'historial';
+
+const FILTER_LABELS: Record<FilterTab, string> = {
+  todas:          'Todas las pendientes',
+  por_aprobar:    'Por aprobar',
+  anulacion_pend: 'Anulación pendiente',
+  aprobadas:      'Aprobadas',
+  rechazadas:     'Rechazadas',
+  anulaciones:    'Anulaciones',
+};
 
 const STATUS_TAG: Record<RequestStatus, { label: string; cls: string }> = {
   creado:               { label: 'Creado',         cls: 'info'    },
@@ -86,7 +95,7 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
   const isAdmin = user.role === 'administrador_gh';
 
   const [activeFilter, setActiveFilter] = useState<FilterTab>(
-    mode === 'anulaciones' ? 'anulaciones' : 'pendientes',
+    mode === 'anulaciones' ? 'anulaciones' : 'todas',
   );
   const [masterTab,    setMasterTab]    = useState<MasterTab>(
     mode === 'anulaciones' ? 'historial' : 'pendientes',
@@ -97,10 +106,17 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
   const [page,         setPage]         = useState(1);
   const [showAction,   setShowAction]   = useState<'approve' | 'reject' | null>(null);
   const [showBulkAction, setShowBulkAction] = useState<'approve' | 'reject' | null>(null);
+  const [actionResult, setActionResult] = useState<{
+    kind: 'approve' | 'reject' | 'annul' | 'annul_reject' | 'bulk_approve' | 'bulk_reject';
+    userName?: string;
+    reqId?: string;
+    count?: number;
+  } | null>(null);
   const [comment,      setComment]      = useState('');
   const [bulkComment,  setBulkComment]  = useState('');
   const [commentErr,   setCommentErr]   = useState('');
-  const [mobileListOpen, setMobileListOpen] = useState(false);
+  const [mobileView,     setMobileView]     = useState<'master' | 'detail'>('master');
+  const [filtersOpen,    setFiltersOpen]    = useState(false);
 
   /* ---- sync filter when mode prop changes ------------------------- */
   useEffect(() => {
@@ -108,7 +124,7 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
       setActiveFilter('anulaciones');
       setMasterTab('historial');
     } else {
-      setActiveFilter('pendientes');
+      setActiveFilter('todas');
       setMasterTab('pendientes');
     }
   }, [mode]);
@@ -131,10 +147,26 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
   const filtered = useMemo(() => {
     let base: VacationRequest[];
     if (masterTab === 'pendientes') {
+      if (activeFilter === 'por_aprobar') {
+        base = requests.filter((r) =>
+          isAdmin ? r.status === 'pendiente_gh' : r.status === 'pendiente_jefe',
+        );
+      } else if (activeFilter === 'anulacion_pend') {
+        base = requests.filter((r) => r.status === 'pendiente_anulacion');
+      } else {
+        base = requests.filter((r) =>
+          isAdmin
+            ? ['pendiente_gh', 'pendiente_anulacion'].includes(r.status)
+            : ['pendiente_jefe', 'pendiente_anulacion'].includes(r.status),
+        );
+      }
+    } else if (activeFilter === 'aprobadas') {
+      base = requests.filter((r) => ['aprobado', 'aprobado_jefe'].includes(r.status));
+    } else if (activeFilter === 'rechazadas') {
+      base = requests.filter((r) => r.status === 'rechazado');
+    } else if (activeFilter === 'anulaciones') {
       base = requests.filter((r) =>
-        isAdmin
-          ? ['pendiente_gh', 'pendiente_anulacion'].includes(r.status)
-          : ['pendiente_jefe', 'pendiente_anulacion'].includes(r.status),
+        ['pendiente_anulacion', 'anulado', 'anulacion_rechazada'].includes(r.status),
       );
     } else {
       base = requests.filter((r) =>
@@ -152,7 +184,7 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
       const bDate = b.history[b.history.length - 1]?.date ?? '';
       return bDate.localeCompare(aDate);
     });
-  }, [requests, masterTab, search, isAdmin]);
+  }, [requests, masterTab, activeFilter, search, isAdmin]);
 
   const pendingCount  = useMemo(() => requests.filter((r) =>
     isAdmin
@@ -160,12 +192,37 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
       : ['pendiente_jefe','pendiente_anulacion'].includes(r.status)
   ).length, [requests, isAdmin]);
 
+  const filterCounts = useMemo(() => ({
+    todas: pendingCount,
+    por_aprobar: requests.filter((r) =>
+      isAdmin ? r.status === 'pendiente_gh' : r.status === 'pendiente_jefe',
+    ).length,
+    anulacion_pend: requests.filter((r) => r.status === 'pendiente_anulacion').length,
+    aprobadas: counts.aprobadas,
+    rechazadas: counts.rechazadas,
+    anulaciones: counts.anulaciones,
+  }), [requests, isAdmin, pendingCount, counts]);
+
+  const pendienteFilters: FilterTab[] = ['todas', 'por_aprobar', 'anulacion_pend'];
+  const historialFilters: FilterTab[] = ['aprobadas', 'rechazadas', 'anulaciones'];
+  const currentFilters = masterTab === 'pendientes' ? pendienteFilters : historialFilters;
+
+  const activeFilterLabel = useMemo(() => {
+    const isDefault = masterTab === 'pendientes'
+      ? activeFilter === 'todas'
+      : activeFilter === 'aprobadas';
+    if (isDefault) return null;
+    if (activeFilter === 'por_aprobar' && isAdmin) return 'Por aprobar GH';
+    return FILTER_LABELS[activeFilter].replace(' las pendientes', '');
+  }, [masterTab, activeFilter, isAdmin]);
+
   /* ---- auto-select first on filter/search change ------------------ */
   useEffect(() => {
     setSelectedId(filtered[0]?.id ?? null);
     setSelectedIds(new Set());
     setPage(1);
-  }, [masterTab, search]);
+    setMobileView('master');
+  }, [masterTab, activeFilter, search]);
 
   /* ---- select all ------------------------------------------------- */
   const allPageSelected = paged => paged.length > 0 && paged.every(r => selectedIds.has(r.id));
@@ -193,15 +250,21 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
 
   /* ---- bulk approve/reject ---------------------------------------- */
   const handleBulkApprove = () => {
+    const count = selectedIds.size;
     const newStatus: RequestStatus = isAdmin ? 'aprobado' : 'aprobado_jefe';
     selectedIds.forEach(id => onUpdateStatus(id, newStatus, user.name, bulkComment.trim() || undefined));
     setSelectedIds(new Set()); setShowBulkAction(null); setBulkComment('');
+    setActionResult({ kind: 'bulk_approve', count });
+    setMobileView('master');
   };
 
   const handleBulkReject = () => {
     if (!bulkComment.trim()) return;
+    const count = selectedIds.size;
     selectedIds.forEach(id => onUpdateStatus(id, 'rechazado', user.name, bulkComment.trim()));
     setSelectedIds(new Set()); setShowBulkAction(null); setBulkComment('');
+    setActionResult({ kind: 'bulk_reject', count });
+    setMobileView('master');
   };
 
   /* ---- pagination -------------------------------------------------- */
@@ -213,8 +276,6 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
     ? (requests.find((r) => r.id === selectedId) ?? filtered[0] ?? null)
     : (filtered[0] ?? null);
 
-  const mobileShowList = mobileListOpen || !selected;
-
   const collaborator = selected ? USERS.find((u) => u.id === selected.userId) : null;
   const calDays  = selected ? countCalDays(selected.startDate, selected.endDate) : 0;
   const workDays = selected?.days ?? 0;
@@ -224,6 +285,32 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
     ? ['pendiente_jefe', 'pendiente_gh', 'pendiente_anulacion'].includes(selected.status)
     : false;
   const isAnnulMode = selected?.status === 'pendiente_anulacion';
+
+  /* ---- detail derived constants ----------------------------------- */
+  const tag = selected
+    ? STATUS_TAG[selected.status]
+    : { cls: 'info', label: '' };
+
+  const vacType = 'Vacaciones días útiles';
+
+  // Level 1 approval (jefe directo)
+  const lvl1Entry = selected?.history.find(h =>
+    ['aprobado_jefe', 'rechazado'].includes(h.status) ||
+    (h.status === 'aprobado' && selected.userRole !== 'colaborador_rotativo')
+  ) ?? null;
+  const lvl1Stat: string =
+    (lvl1Entry?.status === 'aprobado_jefe' || lvl1Entry?.status === 'aprobado') ? 'aprobado' :
+    lvl1Entry?.status === 'rechazado' ? 'rechazado' : 'pendiente';
+  const lvl1User = USERS.find(u => u.name === collaborator?.approver) ?? null;
+
+  // Level 2 approval (administrador GH) — only for colaborador_rotativo
+  const lvl2Entry = selected?.history.find(h =>
+    h.status === 'aprobado' && selected.userRole === 'colaborador_rotativo'
+  ) ?? null;
+  const lvl2Stat: string =
+    lvl2Entry?.status === 'aprobado' ? 'aprobado' :
+    lvl2Entry?.status === 'rechazado' ? 'rechazado' : 'pendiente';
+  const lvl2User = USERS.find(u => u.role === 'administrador_gh') ?? null;
 
   /* ---- team impact ------------------------------------------------ */
   const teamImpact = useMemo(() => {
@@ -239,6 +326,12 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
 
   const isShortPeriod = selected != null && workDays > 0 && workDays <= 2;
 
+  /* ---- derived flags for detail alerts ----------------------------- */
+  const today       = new Date().toISOString().split('T')[0];
+  const isRotativo  = selected?.userRole === 'colaborador_rotativo';
+  // Only warn about expired dates when the START date is strictly before today
+  const hasVencidas = selected != null && selected.startDate < today;
+
   /* ---- team impact warning (independent from short-period alert) -- */
   const teamImpactWarning = useMemo(() => {
     if (!selected || teamImpact.length < 2) return null;
@@ -249,11 +342,18 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
   const handleApprove = () => {
     if (!selected) return;
     let newStatus: RequestStatus;
-    if (isAnnulMode)     newStatus = 'anulado';
-    else if (isAdmin)    newStatus = 'aprobado';
-    else                 newStatus = 'aprobado_jefe';
+    let resultKind: 'approve' | 'annul';
+    if (isAnnulMode)     { newStatus = 'anulado'; resultKind = 'annul'; }
+    else if (isAdmin)    { newStatus = 'aprobado'; resultKind = 'approve'; }
+    else                 { newStatus = 'aprobado_jefe'; resultKind = 'approve'; }
     onUpdateStatus(selected.id, newStatus, user.name, comment.trim() || undefined);
     setShowAction(null); setComment(''); setCommentErr('');
+    setActionResult({
+      kind: resultKind,
+      userName: selected.userName,
+      reqId: selected.id,
+    });
+    setMobileView('master');
   };
 
   const handleReject = () => {
@@ -262,26 +362,65 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
     const newStatus: RequestStatus = isAnnulMode ? 'anulacion_rechazada' : 'rechazado';
     onUpdateStatus(selected.id, newStatus, user.name, comment.trim());
     setShowAction(null); setComment(''); setCommentErr('');
+    setActionResult({
+      kind: isAnnulMode ? 'annul_reject' : 'reject',
+      userName: selected.userName,
+      reqId: selected.id,
+    });
+    setMobileView('master');
   };
+
+  const closeConfirmModal = () => {
+    setShowAction(null);
+    setComment('');
+    setCommentErr('');
+  };
+
+  const confirmCopy = useMemo(() => {
+    if (!showAction || !selected) return null;
+    if (isAnnulMode) {
+      return showAction === 'approve'
+        ? {
+            title: 'Confirmar anulación',
+            question: `¿Confirma la anulación de la solicitud de vacaciones de ${selected.userName}?`,
+            hint: 'La solicitud quedará anulada y el colaborador será notificado.',
+            confirmLabel: 'Confirmar anulación',
+            variant: 'warning' as const,
+          }
+        : {
+            title: 'Rechazar anulación',
+            question: `¿Rechaza la solicitud de anulación de ${selected.userName}?`,
+            hint: 'La solicitud de vacaciones seguirá vigente según su estado anterior.',
+            confirmLabel: 'Rechazar anulación',
+            variant: 'reject' as const,
+          };
+    }
+    return showAction === 'approve'
+      ? {
+          title: 'Aprobar solicitud',
+          question: `¿Aprueba la solicitud de vacaciones de ${selected.userName}?`,
+          hint: 'El colaborador será notificado por correo y en el centro de tareas.',
+          confirmLabel: 'Aprobar solicitud',
+          variant: 'approve' as const,
+        }
+      : {
+          title: 'Rechazar solicitud',
+          question: `¿Rechaza la solicitud de vacaciones de ${selected.userName}?`,
+          hint: 'Indica el motivo del rechazo. El colaborador será notificado.',
+          confirmLabel: 'Rechazar solicitud',
+          variant: 'reject' as const,
+        };
+  }, [showAction, selected, isAnnulMode]);
 
   /* ---------------------------------------------------------------- */
   /*  Render                                                          */
   /* ---------------------------------------------------------------- */
   return (
-    <div className="ap-page">
+    <div className={`ap-page ap-page--mob-${mobileView}`}>
 
       {/* ═══════════════ MASTER — left panel ══════════════════════ */}
       <aside className="ap-master">
         <div className="ap-master-header">
-          {mobileListOpen && selected && (
-            <button
-              type="button"
-              className="ap-master-back"
-              onClick={() => setMobileListOpen(false)}
-            >
-              ← Volver al detalle
-            </button>
-          )}
           <h2 className="ap-master-title">Mis solicitudes para tu aprobación</h2>
         </div>
 
@@ -289,14 +428,14 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
         <div className="ap-master-tabs">
           <button
             className={`ap-master-tab${masterTab === 'pendientes' ? ' ap-master-tab--active' : ''}`}
-            onClick={() => setMasterTab('pendientes')}
+            onClick={() => { setMasterTab('pendientes'); setActiveFilter('todas'); setFiltersOpen(false); }}
           >
             Pendientes
             {pendingCount > 0 && <span className="ap-master-tab-badge">{pendingCount}</span>}
           </button>
           <button
             className={`ap-master-tab${masterTab === 'historial' ? ' ap-master-tab--active' : ''}`}
-            onClick={() => setMasterTab('historial')}
+            onClick={() => { setMasterTab('historial'); setActiveFilter('aprobadas'); setFiltersOpen(false); }}
           >
             Historial
           </button>
@@ -319,13 +458,13 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
         {/* ── Toolbar: Filtros + Search + Settings ── */}
         <div className="ap-master-toolbar">
           <button
-            className={`ap-filter-btn${filtersOpen ? ' ap-filter-btn--active' : ''}`}
+            className={`ap-filter-btn${(filtersOpen || activeFilterLabel) ? ' ap-filter-btn--active' : ''}`}
             onClick={() => setFiltersOpen(o => !o)}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M1 3h14M3 8h10M5 13h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
             </svg>
-            Filtros
+            {activeFilterLabel ?? 'Filtros'}
             <svg className={`ap-filter-chevron${filtersOpen ? ' ap-filter-chevron--open':''}`} width="10" height="10" viewBox="0 0 10 10" fill="none">
               <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
@@ -355,6 +494,30 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
             </svg>
           </button>
         </div>
+
+        {/* ── Filter dropdown (SAP ViewSettings pattern) ── */}
+        {filtersOpen && (
+          <div className="ap-filter-panel" role="listbox" aria-label="Filtros de solicitudes">
+            <div className="ap-filter-panel-hdr">
+              {masterTab === 'pendientes' ? 'Filtrar pendientes' : 'Filtrar historial'}
+            </div>
+            {currentFilters.map(f => (
+              <button
+                key={f}
+                type="button"
+                role="option"
+                aria-selected={activeFilter === f}
+                className={`ap-filter-option${activeFilter === f ? ' ap-filter-option--active' : ''}`}
+                onClick={() => { setActiveFilter(f); setFiltersOpen(false); }}
+              >
+                <span className="ap-filter-option-lbl">
+                  {f === 'por_aprobar' && isAdmin ? 'Por aprobar GH' : FILTER_LABELS[f]}
+                </span>
+                <span className="ap-filter-option-count">{filterCounts[f]}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* ── Batch action bar ── */}
         {someSelected && masterTab === 'pendientes' && (
@@ -418,16 +581,17 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
               return (
                 <div
                   key={req.id}
-                  className={`ap-item${isActive ? ' ap-item--active' : ''}`}
+                  className={`ap-list-item${isActive ? ' ap-list-item--active' : ''}${isChecked ? ' ap-list-item--checked' : ''}`}
                   onClick={() => {
                     setSelectedId(req.id);
-                    setMobileListOpen(false);
+                    setMobileView('detail');
                   }}
-                  role="button"
+                  role="option"
+                  aria-selected={isActive}
                   tabIndex={0}
                   onKeyDown={(e) => e.key === 'Enter' && setSelectedId(req.id)}
                 >
-                  {/* Checkbox – only for pendientes tab */}
+                  {/* Checkbox — sap.m.List mode MultiSelect */}
                   {masterTab === 'pendientes' && isPend && (
                     <label
                       className="ap-item-check-wrap"
@@ -438,45 +602,49 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
                         className="ap-checkbox"
                         checked={isChecked}
                         onChange={() => toggleSelectOne(req.id)}
+                        aria-label={`Seleccionar solicitud de ${req.userName}`}
                       />
                     </label>
                   )}
 
-                  {/* Avatar */}
+                  {/* Avatar — sap.m.Avatar / StandardListItem icon (foto o iniciales) */}
                   <div
                     className="ap-list-avatar"
                     style={itemPhoto ? { background: 'transparent', padding: 0, overflow: 'hidden' } : { background: avatarColor }}
                   >
                     {itemPhoto
-                      ? <img src={`${import.meta.env.BASE_URL}${itemPhoto}`} alt={req.userName} className="ap-avatar-img"/>
+                      ? <img src={`${import.meta.env.BASE_URL}${itemPhoto}`} alt="" className="ap-avatar-img"/>
                       : getInitials(req.userName)}
                   </div>
 
-                  {/* Main info */}
+                  {/* Content — title + description (StandardListItem) */}
                   <div className="ap-list-body">
-                    <div className="ap-list-name">{req.userName}</div>
-                    <div className="ap-list-id">{req.id}</div>
-                    <div className="ap-list-dates">
-                      {fmtShort(req.startDate)} – {fmtShort(req.endDate)}
+                    <div className="ap-list-title">{req.userName}</div>
+                    <div className="ap-list-desc">
+                      <span className="ap-list-id">{req.id}</span>
+                      <span className="ap-list-sep">·</span>
+                      <span>{fmtShort(req.startDate)} – {fmtShort(req.endDate)}</span>
                       <span className="ap-list-days-badge">({req.days} {req.days === 1 ? 'día' : 'días'})</span>
                     </div>
                   </div>
 
-                  {/* Right: status + time */}
-                  <div className="ap-list-right">
+                  {/* Info — estado + fecha (ObjectListItem number/status) */}
+                  <div className="ap-list-info">
                     <div className="ap-list-status">
                       <span className={`ap-status-dot ap-status-dot--${tag.cls}`}/>
-                      <span className="ap-list-status-lbl">{tag.label}</span>
+                      <span className={`ap-list-status-lbl ap-list-status-lbl--${tag.cls}`}>{tag.label}</span>
                     </div>
                     <div className="ap-list-time">
                       {fmtRelTime(lastEntry?.date ?? '', lastEntry?.time)}
                     </div>
                   </div>
 
-                  {/* Arrow */}
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="ap-list-arrow">
-                    <path d="M5 3l4 4-4 4" stroke="#ccc" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                  {/* Navigation indicator */}
+                  <span className="ap-list-nav" aria-hidden="true">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M4.5 2.5l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </span>
                 </div>
               );
             })
@@ -533,25 +701,38 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
           </div>
         ) : (
           <>
-            {/* Mobile: toggle list (SAP master-detail) */}
-            <div className="ap-detail-toolbar">
-              <button
-                type="button"
-                className="ap-mobile-list-btn"
-                onClick={() => setMobileListOpen(true)}
-                aria-label="Ver lista de solicitudes"
-              >
-                <span className="ap-mobile-list-btn-icon" aria-hidden="true">☰</span>
-                Ver solicitudes
-                {counts[activeFilter] > 0 && (
-                  <span className="ap-mobile-list-badge">{counts[activeFilter]}</span>
-                )}
-              </button>
-            </div>
+            {/* ── Detail panel (SAPUI5 Object Page) ── */}
+            <div className="ap-det-panel">
 
-            {/* Employee header */}
-            <div className="ap-det-header">
-              <div className="ap-det-emp">
+              {/* Top bar — mobile: botón sandwich para volver al master */}
+              <div className="ap-det-topbar">
+                <button
+                  type="button"
+                  className="ap-mob-back-btn"
+                  onClick={() => setMobileView('master')}
+                  aria-label="Volver a la lista de solicitudes"
+                >
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path d="M3 5.5h14" stroke="#32363a" strokeWidth="2.2" strokeLinecap="round"/>
+                    <path d="M3 10h14" stroke="#32363a" strokeWidth="2.2" strokeLinecap="round"/>
+                    <path d="M3 14.5h14" stroke="#32363a" strokeWidth="2.2" strokeLinecap="round"/>
+                  </svg>
+                </button>
+                <span className="ap-det-topbar-title">Detalle de la solicitud</span>
+                <button type="button" className="ap-delegation-btn">
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                    <circle cx="6" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
+                    <path d="M1 13c0-2.76 2.24-5 5-5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                    <circle cx="12" cy="9" r="2" stroke="currentColor" strokeWidth="1.3"/>
+                    <path d="M9 14c0-1.66 1.34-3 3-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                    <path d="M14.5 7.5l-2-2-2 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  Delegación
+                </button>
+              </div>
+
+              {/* Employee profile */}
+              <div className="ap-det-emp-card">
                 <div
                   className="ap-det-emp-avatar"
                   style={collaborator?.photo ? { background: 'transparent', padding: 0, overflow: 'hidden' } : { background: AVATAR_COLORS[selected.userRole] ?? '#DA291C' }}
@@ -561,16 +742,14 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
                     : getInitials(selected.userName)}
                 </div>
                 <div className="ap-det-emp-body">
-                  <div className="ap-det-emp-name-row">
-                    <span className="ap-det-emp-name">{selected.userName}</span>
-                    <span className={`ap-det-status-pill ap-det-status-pill--${tag.cls}`}>{tag.label}</span>
-                  </div>
+                  <div className="ap-det-emp-name">{selected.userName}</div>
                   <div className="ap-det-emp-meta">
                     <span>Código: <strong>{collaborator?.codigoEmpleado ?? selected.id}</strong></span>
                     <span className="ap-det-emp-sep">·</span>
                     <span>Área: <strong>{collaborator?.department ?? ROLE_LABELS[selected.userRole]}</strong></span>
                   </div>
                 </div>
+                <span className={`ap-det-status-pill ap-det-status-pill--${tag.cls}`}>{tag.label}</span>
               </div>
 
               {/* ── Main vacation info card ── */}
@@ -587,8 +766,7 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
                     Fechas solicitadas
                   </div>
                   <div className="ap-vc2-dates">
-                    {fmtLong(selected.startDate)} –<br/>
-                    {fmtLong(selected.endDate)}
+                    {fmtLong(selected.startDate)} – {fmtLong(selected.endDate)}
                     <span className="ap-vc2-days-badge"> ({calDays} {calDays === 1 ? 'día' : 'días'})</span>
                   </div>
                   <div className="ap-vc2-return">
@@ -847,9 +1025,10 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
                 </div>
 
               </div>
+            </div>{/* /ap-det-panel */}
             </>
-          );
-        })()}
+          )
+        }
       </main>
 
       {isPending && selected && (
@@ -881,30 +1060,40 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
       )}
       </div>
 
-      {/* ═══════════════ MOBILE NAV BAR ═══════════════════════════ */}
+      {/* ═══════════════ MOBILE NAV — solo en vista master ═════════ */}
       <nav className="ap-mob-nav" aria-label="Navegación aprobación">
 
-        {/* Pendientes */}
         <button
+          type="button"
           className={`ap-mob-nav-btn${masterTab === 'pendientes' ? ' ap-mob-nav-btn--active' : ''}`}
-          onClick={() => { setMasterTab('pendientes'); setMobileView('master'); }}
+          onClick={() => {
+            setMasterTab('pendientes');
+            setActiveFilter('todas');
+            setFiltersOpen(false);
+            setMobileView('master');
+          }}
         >
           <span className="ap-mob-nav-icon-wrap">
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
               <path d="M10 2a6 6 0 016 6c0 3.5 1.5 5 1.5 5H2.5S4 11.5 4 8a6 6 0 016-6Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               <path d="M8 16a2 2 0 004 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
-            {counts.pendientes > 0 && (
-              <span className="ap-mob-nav-badge">{counts.pendientes}</span>
+            {pendingCount > 0 && (
+              <span className="ap-mob-nav-badge">{pendingCount}</span>
             )}
           </span>
           <span className="ap-mob-nav-label">Pendientes</span>
         </button>
 
-        {/* Historial */}
         <button
+          type="button"
           className={`ap-mob-nav-btn${masterTab === 'historial' ? ' ap-mob-nav-btn--active' : ''}`}
-          onClick={() => { setMasterTab('historial'); setMobileView('master'); }}
+          onClick={() => {
+            setMasterTab('historial');
+            setActiveFilter('aprobadas');
+            setFiltersOpen(false);
+            setMobileView('master');
+          }}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
             <circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.5"/>
@@ -913,83 +1102,77 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
           <span className="ap-mob-nav-label">Historial</span>
         </button>
 
-        {/* FAB — Acción principal */}
-        <div className="ap-mob-fab-wrap">
-          <button
-            className={`ap-mob-fab${!isPending ? ' ap-mob-fab--disabled' : ''}`}
-            disabled={!isPending}
-            onClick={() => {
-              if (isPending) { setShowAction('approve'); setComment(''); setCommentErr(''); }
-            }}
-            aria-label={isPending ? 'Aprobar solicitud' : 'Sin acción disponible'}
-          >
-            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-              <path d="M4 11l5.5 5.5L18 6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-        </div>
-
-        {/* Delegación */}
-        <button className="ap-mob-nav-btn">
+        <button
+          type="button"
+          className={`ap-mob-nav-btn${filtersOpen ? ' ap-mob-nav-btn--active' : ''}`}
+          onClick={() => {
+            setFiltersOpen(o => !o);
+            setMobileView('master');
+          }}
+          aria-expanded={filtersOpen}
+        >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <circle cx="7" cy="6" r="3" stroke="currentColor" strokeWidth="1.5"/>
-            <path d="M1.5 16c0-3.03 2.46-5.5 5.5-5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            <circle cx="14.5" cy="11" r="2.5" stroke="currentColor" strokeWidth="1.5"/>
-            <path d="M11 17.5c0-1.93 1.57-3.5 3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            <path d="M17.5 9l-2.5-2.5-2.5 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M2 4h16M4 10h12M6 16h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
-          <span className="ap-mob-nav-label">Delegación</span>
-        </button>
-
-        {/* Perfil */}
-        <button className="ap-mob-nav-btn">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <circle cx="10" cy="7" r="3.5" stroke="currentColor" strokeWidth="1.5"/>
-            <path d="M2.5 18c0-4.14 3.36-7.5 7.5-7.5s7.5 3.36 7.5 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-          <span className="ap-mob-nav-label">Perfil</span>
+          <span className="ap-mob-nav-label">Filtros</span>
         </button>
       </nav>
 
-      {/* ═══════════════ ACTION MODAL ══════════════════════════════ */}
-      {showAction && selected && (
-        <div className="wz-overlay" onClick={() => setShowAction(null)}>
-          <div className="wz-modal ap-action-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="wz-modal-header">
-              <div>
-                <div className="wz-modal-title">
-                  {showAction === 'approve'
-                    ? (isAnnulMode ? 'Confirmar anulación' : 'Aprobar solicitud')
-                    : (isAnnulMode ? 'Rechazar anulación' : 'Rechazar solicitud')}
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--wz-text-secondary)', marginTop: 2 }}>
-                  {selected.id} · {selected.userName}
-                </div>
+      {/* ═══════════════ CONFIRM ACTION MODAL ═══════════════════════ */}
+      {showAction && selected && confirmCopy && (
+        <div className="wz-overlay" onClick={closeConfirmModal}>
+          <div className="wz-modal ap-confirm-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="ap-confirm-title">
+            <div className="ap-confirm-hdr">
+              <div className={`ap-confirm-icon ap-confirm-icon--${confirmCopy.variant}`} aria-hidden="true">
+                {confirmCopy.variant === 'approve' && (
+                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                    <path d="M6 14l6 6L22 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+                {confirmCopy.variant === 'reject' && (
+                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                    <path d="M8 8l12 12M20 8L8 20" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                  </svg>
+                )}
+                {confirmCopy.variant === 'warning' && (
+                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                    <path d="M14 5L4 23h20L14 5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
+                    <rect x="12.5" y="12" width="3" height="6" rx="1" fill="currentColor"/>
+                    <circle cx="14" cy="21" r="1.5" fill="currentColor"/>
+                  </svg>
+                )}
               </div>
-              <button className="wz-modal-close" onClick={() => setShowAction(null)}>✕</button>
+              <div className="ap-confirm-hdr-text">
+                <h3 id="ap-confirm-title" className="wz-modal-title">{confirmCopy.title}</h3>
+                <p className="ap-confirm-sub">{selected.id} · {selected.userName}</p>
+              </div>
+              <button type="button" className="wz-modal-close" onClick={closeConfirmModal} aria-label="Cerrar">✕</button>
             </div>
 
             <div className="wz-modal-body">
-              {/* Quick summary */}
+              <p className="ap-confirm-question">{confirmCopy.question}</p>
+              <p className="ap-confirm-hint">{confirmCopy.hint}</p>
+
               <div className="ap-modal-summary">
                 <div className="ap-modal-summary-item">
-                  <span>📅 Período</span>
+                  <span>Período</span>
                   <strong>{fmtShort(selected.startDate)} – {fmtShort(selected.endDate)}</strong>
                 </div>
                 <div className="ap-modal-summary-item">
-                  <span>📊 Días laborables</span>
-                  <strong>{workDays} días</strong>
+                  <span>Días laborables</span>
+                  <strong>{workDays} {workDays === 1 ? 'día' : 'días'}</strong>
                 </div>
               </div>
 
-              <div className="wz-field" style={{ marginTop: 16 }}>
-                <label style={{ fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 6 }}>
+              <div className="wz-field ap-confirm-field">
+                <label htmlFor="ap-action-comment">
                   Comentario{' '}
                   {showAction === 'reject'
-                    ? <span style={{ color: 'var(--wz-error)' }}>*</span>
-                    : <span style={{ color: 'var(--wz-text-secondary)', fontWeight: 400 }}>(opcional)</span>}
+                    ? <span className="ap-confirm-required">*</span>
+                    : <span className="ap-confirm-optional">(opcional)</span>}
                 </label>
                 <textarea
+                  id="ap-action-comment"
                   className="wz-textarea"
                   placeholder={
                     showAction === 'reject'
@@ -998,32 +1181,64 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
                   }
                   value={comment}
                   onChange={(e) => { setComment(e.target.value); setCommentErr(''); }}
-                  rows={4}
+                  rows={3}
                 />
-                {commentErr && (
-                  <span style={{ fontSize: 12, color: 'var(--wz-error)', marginTop: 4, display: 'block' }}>
-                    {commentErr}
-                  </span>
-                )}
+                {commentErr && <span className="ap-confirm-err">{commentErr}</span>}
               </div>
             </div>
 
             <div className="wz-modal-footer">
-              <button
-                className="wz-btn wz-btn-outline"
-                onClick={() => { setShowAction(null); setComment(''); setCommentErr(''); }}
-              >
+              <button type="button" className="wz-btn wz-btn-outline" onClick={closeConfirmModal}>
                 Cancelar
               </button>
               {showAction === 'approve' ? (
-                <button className="ap-btn-approve ap-btn-approve--sm" onClick={handleApprove}>
-                  ✓ {isAnnulMode ? 'Confirmar anulación' : 'Aprobar'}
+                <button type="button" className="ap-btn-approve ap-btn-approve--sm" onClick={handleApprove}>
+                  {confirmCopy.confirmLabel}
                 </button>
               ) : (
-                <button className="ap-btn-reject ap-btn-reject--sm" onClick={handleReject}>
-                  ✕ {isAnnulMode ? 'Rechazar anulación' : 'Rechazar'}
+                <button type="button" className="ap-btn-reject ap-btn-reject--sm" onClick={handleReject}>
+                  {confirmCopy.confirmLabel}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ SUCCESS RESULT MODAL ═════════════════════ */}
+      {actionResult && (
+        <div className="wz-overlay" onClick={() => setActionResult(null)}>
+          <div className="wz-modal ap-result-modal" onClick={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true">
+            <div className="ap-result-body">
+              <div className={`ap-result-icon ap-result-icon--${
+                ['approve', 'annul', 'bulk_approve'].includes(actionResult.kind) ? 'success' : 'error'
+              }`}>
+                {['approve', 'annul', 'bulk_approve'].includes(actionResult.kind) ? (
+                  <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                    <path d="M7 16l7 8L25 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                ) : (
+                  <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                    <path d="M9 9l14 14M23 9L9 23" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+                  </svg>
+                )}
+              </div>
+              <h3 className="ap-result-title">
+                {actionResult.kind === 'approve' && 'Solicitud aprobada'}
+                {actionResult.kind === 'reject' && 'Solicitud rechazada'}
+                {actionResult.kind === 'annul' && 'Anulación confirmada'}
+                {actionResult.kind === 'annul_reject' && 'Anulación rechazada'}
+                {actionResult.kind === 'bulk_approve' && `${actionResult.count} solicitud${(actionResult.count ?? 0) > 1 ? 'es' : ''} aprobada${(actionResult.count ?? 0) > 1 ? 's' : ''}`}
+                {actionResult.kind === 'bulk_reject' && `${actionResult.count} solicitud${(actionResult.count ?? 0) > 1 ? 'es' : ''} rechazada${(actionResult.count ?? 0) > 1 ? 's' : ''}`}
+              </h3>
+              <p className="ap-result-sub">
+                {actionResult.userName
+                  ? <>La acción sobre la solicitud de <strong>{actionResult.userName}</strong> ({actionResult.reqId}) se registró correctamente.</>
+                  : <>La acción masiva se registró correctamente. Los colaboradores serán notificados.</>}
+              </p>
+              <button type="button" className="ap-result-btn" onClick={() => setActionResult(null)}>
+                Entendido
+              </button>
             </div>
           </div>
         </div>
@@ -1045,11 +1260,16 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
               <button className="wz-modal-close" onClick={() => setShowBulkAction(null)}>✕</button>
             </div>
             <div className="wz-modal-body">
-              {showBulkAction === 'reject' && (
-                <div className="wz-alert wz-alert-warning" style={{ marginBottom: 12 }}>
-                  El motivo es obligatorio para el rechazo.
-                </div>
-              )}
+              <p className="ap-confirm-question">
+                {showBulkAction === 'approve'
+                  ? `¿Aprueba las ${selectedIds.size} solicitud${selectedIds.size > 1 ? 'es' : ''} seleccionada${selectedIds.size > 1 ? 's' : ''}?`
+                  : `¿Rechaza las ${selectedIds.size} solicitud${selectedIds.size > 1 ? 'es' : ''} seleccionada${selectedIds.size > 1 ? 's' : ''}?`}
+              </p>
+              <p className="ap-confirm-hint">
+                {showBulkAction === 'approve'
+                  ? 'Los colaboradores serán notificados por correo y en el centro de tareas.'
+                  : 'Indica el motivo del rechazo. Es obligatorio para continuar.'}
+              </p>
               <div className="wz-field">
                 <label htmlFor="bulk-comment">
                   {showBulkAction === 'approve' ? 'Comentario (opcional)' : 'Motivo del rechazo'}
@@ -1068,16 +1288,17 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
             <div className="wz-modal-footer">
               <button className="wz-btn wz-btn-outline" onClick={() => setShowBulkAction(null)}>Cancelar</button>
               {showBulkAction === 'approve' ? (
-                <button className="wz-btn" style={{ background: '#188918', color: '#fff' }} onClick={handleBulkApprove}>
-                  ✓ Confirmar aprobación
+                <button type="button" className="ap-btn-approve ap-btn-approve--sm" onClick={handleBulkApprove}>
+                  Confirmar aprobación
                 </button>
               ) : (
                 <button
-                  className="wz-btn wz-btn-danger"
+                  type="button"
+                  className="ap-btn-reject ap-btn-reject--sm"
                   disabled={!bulkComment.trim()}
                   onClick={handleBulkReject}
                 >
-                  ✕ Confirmar rechazo
+                  Confirmar rechazo
                 </button>
               )}
             </div>
