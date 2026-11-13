@@ -5,7 +5,7 @@ import { useVacationRequests } from '../hooks/useVacationRequests';
 import type { SpaceId, PageId, NavigateFn } from '../types';
 import HomePage from '../pages/HomePage';
 import SolicitudVacaciones from '../pages/SolicitudVacaciones';
-import MisSolicitudes from '../pages/MisSolicitudes';
+//import MisSolicitudes from '../pages/MisSolicitudes';
 import AprobacionVacaciones from '../pages/AprobacionVacaciones';
 import ReportesVacaciones from '../pages/ReportesVacaciones';
 import Trazabilidad from '../pages/Trazabilidad';

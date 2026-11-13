@@ -10,7 +10,7 @@ import type { NavigateFn } from '../types';
 /* ------------------------------------------------------------------ */
 
 /** "1 día hábil" / "N días hábiles" */
-const dayLabel = (n: number) => n === 1 ? '1 día hábil' : `${n} días hábiles`;
+//const dayLabel = (n: number) => n === 1 ? '1 día hábil' : `${n} días hábiles`;
 
 const countWorkingDays = (start: string, end: string): number => {
   if (!start || !end) return 0;

@@ -3078,6 +3078,20 @@ body {
   line-height: 1.5;
   flex: 1;
 }
+.hp-app-desc-emphasis {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wz-text);
+  line-height: 1.45;
+}
+.hp-app-desc-emphasis strong {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--wz-text);
+}
+.hp-app-desc-emphasis--alert strong {
+  color: #E65100;
+}
 .hp-app-badge {
   display: flex;
   align-items: center;
@@ -3177,6 +3191,8 @@ body {
 .hp-pending-num  { font-size: 36px; font-weight: 900; color: var(--wz-primary); line-height: 1; }
 .hp-pending-unit { font-size: 15px; font-weight: 700; color: var(--wz-primary); }
 .hp-pending-sub  { font-size: 13px; color: var(--wz-text-secondary); line-height: 1.4; }
+.hp-pending-highlight--orange .hp-pending-num,
+.hp-pending-highlight--orange .hp-pending-unit { color: #E65100; }
 
 /* ── Alert banner (jefe) ─────────────────────────────────────── */
 .hp-alert-banner {

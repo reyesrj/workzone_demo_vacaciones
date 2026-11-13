@@ -225,7 +225,9 @@ const AprobacionVacaciones: React.FC<Props> = ({ user, requests, mode, onUpdateS
   }, [masterTab, activeFilter, search]);
 
   /* ---- select all ------------------------------------------------- */
-  const allPageSelected = paged => paged.length > 0 && paged.every(r => selectedIds.has(r.id));
+  const allPageSelected = (paged: any[]) =>
+  paged.length > 0 &&
+  paged.every((r) => selectedIds.has(r.id));
   const someSelected    = selectedIds.size > 0;
 
   const toggleSelectAll = (pagedItems: VacationRequest[]) => {

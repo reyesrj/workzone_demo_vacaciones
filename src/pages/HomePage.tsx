@@ -42,7 +42,7 @@ const AppCard: React.FC<{
   imgSmall?: boolean;   /* true for icon-only panels (narrower left column) */
   imgBg?: string;       /* custom background color for the image panel */
   title: string;
-  desc: string;
+  desc: React.ReactNode;
   badge?: React.ReactNode;
   ctaLabel: string;
   ctaVariant?: 'primary' | 'outline' | 'purple' | 'green';
@@ -261,7 +261,6 @@ const HomePage: React.FC<HomePageProps> = ({ user, requests, allRequests, onNavi
   const isColaborador = isStandard || isRotativo;
   const isJefe  = user.role === 'jefe_aprobador';
   const isAdmin = user.role === 'administrador_gh';
-  const today   = new Date().toISOString().split('T')[0];
 
   /* ── Counts ─────────────────────────────────────────────────────── */
   const myPendingCount = requests.filter(r =>
@@ -274,12 +273,12 @@ const HomePage: React.FC<HomePageProps> = ({ user, requests, allRequests, onNavi
     ? allRequests.filter(r => r.status === 'pendiente_gh').length
     : 0;
 
-  const sevenDaysLater = new Date();
-  sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
-  const d7 = sevenDaysLater.toISOString().split('T')[0];
-  const expiringCount = allRequests.filter(r =>
-    r.status === 'aprobado' && r.startDate >= today && r.startDate <= d7
-  ).length;
+  const teamColaboradores = USERS.filter(u =>
+    (u.role === 'colaborador_standard' || u.role === 'colaborador_rotativo') &&
+    (u.approver === user.name || u.managerId === user.id)
+  );
+  const teamSize = teamColaboradores.length;
+  const teamAtRiskCount = teamColaboradores.filter(u => u.vacationBalanceVencidas > 0).length;
 
   /* ── Admin global KPIs ────────────────────────────────────────── */
   const colaboradoresCount = USERS.filter(u =>
@@ -433,15 +432,19 @@ const HomePage: React.FC<HomePageProps> = ({ user, requests, allRequests, onNavi
             onClick={() => onNavigate('solicitudes-pendientes')}
           />
           <AppCard
-            imgNode={<BellIcon />}
+            imgNode={<ReporteIcon />}
             imgSmall
-            title="Solicitudes próximas a vencer"
-            desc={expiringCount > 0
-              ? `${expiringCount} solicitudes · Vencen en los próximos 7 días.`
-              : 'Sin solicitudes próximas a vencer esta semana.'}
-            ctaLabel="Ver detalles"
+            title="Reporte de Mi Equipo"
+            desc={
+              <span className={teamAtRiskCount > 0 ? 'hp-app-desc-emphasis hp-app-desc-emphasis--alert' : 'hp-app-desc-emphasis'}>
+                {teamAtRiskCount > 0
+                  ? <><strong>{teamSize}</strong> colaboradores · <strong>{teamAtRiskCount}</strong> requieren atención.</>
+                  : <><strong>{teamSize}</strong> colaboradores · Saldos y solicitudes del equipo.</>}
+              </span>
+            }
+            ctaLabel="Ver reporte"
             ctaVariant="outline"
-            onClick={() => onNavigate('solicitudes-pendientes')}
+            onClick={() => onNavigate('reporte-vacaciones')}
           />
         </div>
 
